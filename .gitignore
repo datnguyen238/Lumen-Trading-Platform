@@ -1,0 +1,23 @@
+# Node / Next.js
+node_modules/
+.next/
+out/
+.env*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python / FastAPI
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+.env
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
