@@ -9,9 +9,10 @@ from app.models.models import PriceBar
 from app.schemas.prices import PriceBarRead, LoadStockRequest, LoadCryptoRequest
 from app.data.price_loader import load_stock_history, load_crypto_klines
 
+
+
 router = APIRouter()
 
-from fastapi import HTTPException
 
 @router.post("/load/stock")
 def load_stock(req: LoadStockRequest, db: Session = Depends(get_db)):
