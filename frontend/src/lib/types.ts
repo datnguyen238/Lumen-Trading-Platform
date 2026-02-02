@@ -69,3 +69,25 @@ export type MarketOrderRequest = {
   order_type: "MARKET";
   quantity: number;
 };
+
+export type SymbolItem = {
+  symbol: string;
+  kind?: "stock" | "crypto" | "index" | string;
+  name?: string;
+};
+
+export type BulkLatestRequest = {
+  symbols: string[];
+};
+
+export type BulkLatestItem = {
+  symbol: string;
+  close: string;         
+  timestamp: string;
+  // open?: string;
+  // high?: string;
+  // low?: string;
+  // volume?: string;
+};
+
+export type BulkLatestResponse = BulkLatestItem[];

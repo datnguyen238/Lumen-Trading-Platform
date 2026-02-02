@@ -4,3 +4,4 @@ from .prices import PriceBarRead, LoadStockRequest, LoadCryptoRequest
 from .orders import OrderCreate, OrderRead
 from .trades import TradeRead
 from .summary import AccountSummary
+from .symbols import SymbolAddRequest, SymbolRead
