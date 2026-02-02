@@ -8,6 +8,9 @@ import type {
   PriceBarRead,
   UserRead,
 } from "@/lib/types";
+import type { BulkLatestItem, SymbolItem } from "@/lib/types";
+
+
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -114,4 +117,26 @@ export const api = {
     request<OrderRead[]>(`/accounts/${accountId}/orders`),
   getTrades: (accountId: number) =>
     request<any[]>(`/accounts/${accountId}/trades`),
+
+    // Symbols + seeding
+  getSymbols: () => request<SymbolItem[]>("/symbols"),
+  seedDefaultWatchlist: () =>
+    request<{ message: string }>("/seed/default-watchlist", { method: "POST" }),
+
+  // Bulk latest prices
+  // Bulk latest prices (backend expects a raw JSON array: ["AAPL","MSFT"])
+  latestBulk: (symbols: string[]) =>
+    request<BulkLatestItem[]>("/prices/latest/bulk", {
+      method: "POST",
+      body: JSON.stringify(symbols),
+    }),
+
+  // Symbols
+  addSymbol: (body: { symbol: string }) =>
+    request<SymbolItem>("/symbols/add", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+
 };

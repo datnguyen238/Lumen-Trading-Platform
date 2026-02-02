@@ -113,3 +113,12 @@ class Position(Base):
     __table_args__ = (
         Index("ix_positions_account_symbol", "account_id", "symbol", unique=True),
     )
+
+class Symbol(Base):
+    __tablename__ = "symbols"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    symbol: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
+    asset_type: Mapped[str] = mapped_column(String, nullable=False, default="stock")  # stock/index/crypto
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

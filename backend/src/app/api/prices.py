@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from datetime import datetime, date
+from app.models.models import PriceBar
 
 from app.db.session import get_db
 from app.models.models import PriceBar
@@ -10,11 +11,16 @@ from app.data.price_loader import load_stock_history, load_crypto_klines
 
 router = APIRouter()
 
+from fastapi import HTTPException
 
 @router.post("/load/stock")
 def load_stock(req: LoadStockRequest, db: Session = Depends(get_db)):
-    count = load_stock_history(db, req.symbol, req.start, req.end, req.interval)
-    return {"message": f"Loaded {count} bars for {req.symbol}"}
+    try:
+        count = load_stock_history(db, req.symbol, req.start, req.end, req.interval)
+        return {"message": f"Loaded {count} bars for {req.symbol}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Stock load failed: {type(e).__name__}: {e}")
+
 
 
 @router.post("/load/crypto")
@@ -50,3 +56,28 @@ def history(symbol: str, start: date, end: date, db: Session = Depends(get_db)):
     if not rows:
         raise HTTPException(status_code=404, detail="No data for symbol/date range.")
     return rows
+
+
+@router.post("/latest/bulk")
+def latest_bulk(symbols: list[str], db: Session = Depends(get_db)):
+    out = []
+    for s in symbols:
+        row = (
+            db.query(PriceBar)
+            .filter(PriceBar.symbol == s)
+            .order_by(desc(PriceBar.timestamp))
+            .first()
+        )
+        if row:
+            out.append({
+                "symbol": s,
+                "timestamp": row.timestamp,
+                "close": str(row.close),
+            })
+        else:
+            out.append({
+                "symbol": s,
+                "timestamp": None,
+                "close": None,
+            })
+    return out

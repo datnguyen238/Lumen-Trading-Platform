@@ -7,6 +7,9 @@ from app.api.orders import router as orders_router
 from app.api.trades import router as trades_router
 from app.api.account_orders import router as account_orders_router
 from app.api.summary import router as summary_router
+from app.api.symbols import router as symbols_router
+from app.api.seed import router as seed_router
+
 
 
 api_router = APIRouter()
@@ -18,4 +21,8 @@ api_router.include_router(orders_router, prefix="/orders", tags=["orders"])
 api_router.include_router(trades_router, tags=["accounts"])
 api_router.include_router(account_orders_router, tags=["accounts"])
 api_router.include_router(summary_router, tags=["accounts"])
+api_router.include_router(symbols_router, tags=["symbols"])
+api_router.include_router(seed_router, tags=["seed"])
+
+
 
