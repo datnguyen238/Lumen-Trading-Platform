@@ -5,14 +5,15 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.data.symbols import DEFAULT_WATCHLIST
-from app.data.price_loader import load_stock_history
+from app.data.price_loader import load_stock_history_polygon
+from app.core.config import settings
+
 
 # IMPORTANT: This must be the SQLAlchemy model (the one in models.py),
 # not the Pydantic schema from app.schemas.
 from app.models.models import Symbol  # <-- if your file is app/models.py
 
 router = APIRouter()
-
 
 def upsert_symbol(db: Session, item: dict) -> None:
     sym = str(item.get("symbol", "")).strip().upper()
@@ -33,6 +34,8 @@ def upsert_symbol(db: Session, item: dict) -> None:
             asset_type=asset_type,
         )
     )
+    db.flush()
+
 
 
 @router.post("/seed/default-watchlist")
@@ -49,9 +52,25 @@ def seed_default_watchlist(db: Session = Depends(get_db)):
 
         # 1) Insert into symbols table so GET /symbols works
         upsert_symbol(db, item)
+        db.commit()
 
-        # 2) Load price history (yfinance)
-        count = load_stock_history(db, symbol, start, end, "1d")
+
+        if symbol.startswith("^"):
+            results.append({"symbol": symbol, "bars_loaded": 0, "skipped": "index_symbol"})
+            continue
+
+        # 2) Load price history (POLYGON)
+        count = load_stock_history_polygon(
+            db=db,
+            api_key=settings.polygon_api_key ,
+            symbol=symbol,
+            start=start,
+            end=end,
+            timespan="day",
+            multiplier=1,
+        )
+        db.commit()
+
 
         results.append({"symbol": symbol, "bars_loaded": count})
 
