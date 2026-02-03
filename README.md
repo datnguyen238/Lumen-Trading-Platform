@@ -128,3 +128,4 @@ It does not connect to real brokerage accounts and does not execute live trades.
 **Dat Nguyen**  
 B.S. Computer Science & Finance  
 Arizona State University
+**Dong Quan Tran**
