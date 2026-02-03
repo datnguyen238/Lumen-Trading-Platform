@@ -11,7 +11,7 @@ This project is built as a **monorepo** and is intentionally designed to scale t
 
 ### Backend (FastAPI)
 - Market data ingestion
-  - Stocks via **Yahoo Finance**
+  - Stocks via **Polygon (Massive)**
   - Crypto via **Binance public API**
 - OHLCV storage for historical and latest prices
 - Paper trading engine
