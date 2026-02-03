@@ -66,13 +66,64 @@ export default function MarketsPage() {
     };
   }, []);
 
+  const requested = useMemo(() => {
+    if (state.kind !== "ready") return [];
+    return dedupe([
+      ...INDEX_SYMBOLS.map((x) => x.symbol),
+      ...state.symbols.map((s) => s.symbol),
+    ]);
+  }, [state.kind, state.kind === "ready" ? state.symbols : null]);
+
+  useEffect(() => {
+    if (state.kind !== "ready") return;
+    if (requested.length === 0) return;
+
+    const ws = new WebSocket(`${wsBaseUrl()}/prices/ws/live`);
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ symbols: requested, interval_ms: 1000 }));
+    };
+
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+
+        if (msg.type === "prices" && Array.isArray(msg.data)) {
+          // If WS returns nothing, don't wipe good data
+          if (msg.data.length === 0) return;
+
+          setState((prev) => {
+            if (prev.kind !== "ready") return prev;
+
+            // Another guard: if WS only returns a tiny subset, don't wipe everything
+            // (optional, but good for stability)
+            if (prev.latest.length > 0 && msg.data.length < Math.min(3, prev.latest.length / 4)) {
+              return prev;
+            }
+
+            return { ...prev, latest: msg.data };
+          });
+        }
+      } catch {
+        // ignore bad messages
+      }
+    };
+
+
+    return () => ws.close();
+  }, [state.kind, requested.join("|")]);
+
+
+
   const indexCards = useMemo(() => {
     if (state.kind !== "ready") {
       return INDEX_SYMBOLS.map((x) => ({ label: x.label, symbol: x.symbol, price: "$—" }));
     }
-    const map = new Map(state.latest.map((b) => [b.symbol, b]));
+    const map = new Map(state.latest.map((b) => [b.symbol.trim().toUpperCase(), b]));
+
     return INDEX_SYMBOLS.map((x) => {
-      const bar = map.get(x.symbol);
+      const bar = map.get(x.symbol.trim().toUpperCase());
+
       return {
         label: x.label,
         symbol: x.symbol,
@@ -83,28 +134,30 @@ export default function MarketsPage() {
   }, [state]);
 
   const popularRows = useMemo(() => {
-  if (state.kind !== "ready") return [];
+    if (state.kind !== "ready") return [];
 
-  const norm = (s: string) => s.trim().toUpperCase();
+    const norm = (s: string) => s.trim().toUpperCase();
+    const indexSet = new Set(INDEX_SYMBOLS.map((x) => norm(x.symbol)));
 
-  // Prefer non-index symbols in the “popular tickers” list
-  const indexSet = new Set(INDEX_SYMBOLS.map((x) => norm(x.symbol)));
-  const latestMap = new Map(state.latest.map((b) => [norm(b.symbol), b]));
+    const latestMap = new Map(
+      state.latest.map((b) => [norm(b.symbol), b])
+    );
 
-  // Take first N symbols from /symbols and map to latest
-  const N = 12;
-  const rows = state.symbols
-    .map((s) => latestMap.get(norm(s.symbol)))
-    .filter((x): x is BulkLatestItem => !!x && !indexSet.has(norm(x.symbol)))
-    .slice(0, N)
-    .map((b) => ({
-      symbol: b.symbol,
-      close: b.close,
-      timestamp: b.timestamp,
-    }));
+    const N = 12;
+    return state.symbols
+      .filter((s) => !indexSet.has(norm(s.symbol)))
+      .slice(0, N)
+      .map((s) => {
+        const b = latestMap.get(norm(s.symbol));
+        return {
+          symbol: s.symbol,
+          close: b?.close ?? "NaN",       // PopularTickers can format or show —
+          timestamp: b?.timestamp ?? null,
+        };
+      });
+  }, [state]);
 
-  return rows;
-}, [state]);
+
 
 
   return (
@@ -152,4 +205,12 @@ function formatUsd(v: string) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "$—";
   return `$${n.toFixed(2)}`;
+}
+
+function wsBaseUrl() {
+  // If your API is on localhost:8000 in dev:
+  // return "ws://localhost:8000";
+  // If you want it to follow the current host:
+  const proto = window.location.protocol === "https:" ? "wss" : "ws";
+  return `${proto}://${window.location.hostname}:8000`;
 }
