@@ -4,7 +4,7 @@
 It combines a **FastAPI backend** for market data ingestion, portfolio accounting, and order execution with a **Next.js frontend** inspired by modern trading platforms (Robinhood, Webull, Binance).
 
 This project is built as a **monorepo** and is intentionally designed to scale toward authentication, real-time data, and advanced analytics.
-
+Real-time WebSocket streaming was evaluated but not adopted due to cost constraints relative to the project’s goals. A REST-based architecture with caching was chosen instead to emphasize scalability, determinism, and production-oriented design.
 ---
 
 ## 🚀 Features
