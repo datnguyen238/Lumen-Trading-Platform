@@ -1,30 +1,46 @@
 from fastapi import APIRouter, Depends, HTTPException
-
 from fastapi import WebSocket, WebSocketDisconnect
 import asyncio
 import json
 import anyio
 
-
-from app.data.price_loader import fetch_latest_stock_snapshot
-
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from datetime import datetime, date
-from pydantic import BaseModel
 
 from app.db.session import get_db
 from app.core.config import settings
 from app.models.models import PriceBar
 from app.schemas.prices import PriceBarRead, LoadStockRequest, LoadCryptoRequest
-from app.data.price_loader import load_stock_history_polygon, load_crypto_klines
+from app.data.price_loader import (
+    load_stock_history_polygon,
+    load_crypto_klines,
+    fetch_latest_stock_bar_polygon,
+)
+from app.services.price_refresh import _upsert_bar, refresh_watchlist_db
 
 
 
 router = APIRouter()
-class LatestBulkRequest(BaseModel):
-    symbols: list[str]
 
+MAX_LIVE_BULK = 5
+
+def _fetch_bulk_latest_bars(symbols: list[str]) -> list[dict]:
+    out = []
+    for s in symbols[:MAX_LIVE_BULK]:
+        s_norm = s.strip().upper()
+        item = fetch_latest_stock_bar_polygon(s_norm)
+        if not item:
+            continue
+        out.append(
+            {
+                "symbol": s_norm,
+                "timestamp": item["timestamp"].isoformat(),
+                "close": item["close"],
+                "source": item.get("source", "rest_agg"),
+            }
+        )
+    return out
 
 @router.post("/load/stock")
 def load_stock(req: LoadStockRequest, db: Session = Depends(get_db)):
@@ -66,6 +82,40 @@ def latest(symbol: str, db: Session = Depends(get_db)):
     return row
 
 
+@router.post("/refresh", response_model=PriceBarRead)
+def refresh(symbol: str, db: Session = Depends(get_db)):
+    """
+    Fetch latest aggregate bar and upsert into DB, then return latest row.
+    """
+    s_norm = symbol.strip().upper()
+    item = fetch_latest_stock_bar_polygon(s_norm)
+    if item:
+        row = _upsert_bar(
+            db,
+            s_norm,
+            item["timestamp"],
+            item["open"],
+            item["high"],
+            item["low"],
+            item["close"],
+            item.get("volume"),
+        )
+        db.commit()
+        db.refresh(row)
+        return row
+
+    # Fallback to most recent DB row
+    row = (
+        db.query(PriceBar)
+        .filter(PriceBar.symbol == s_norm)
+        .order_by(desc(PriceBar.timestamp))
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="No data for symbol. Load prices first.")
+    return row
+
+
 @router.get("/history", response_model=list[PriceBarRead])
 def history(symbol: str, start: date, end: date, db: Session = Depends(get_db)):
     start_ts = datetime.combine(start, datetime.min.time())
@@ -84,23 +134,39 @@ def history(symbol: str, start: date, end: date, db: Session = Depends(get_db)):
 
 @router.post("/latest/bulk")
 def latest_bulk(symbols: list[str], db: Session = Depends(get_db)):
-    # 1) Try Polygon snapshot first (live-ish)
-    live = fetch_latest_stock_snapshot(symbols)
-    live_map = {x["symbol"]: x for x in live if x.get("symbol")}
+    # 1) Try Polygon aggregates first (latest bar)
+    live_map = {}
+    for s in symbols[:MAX_LIVE_BULK]:
+        s_norm = s.strip().upper()
+        item = fetch_latest_stock_bar_polygon(s_norm)
+        if item:
+            live_map[s_norm] = item
 
     # 2) Fallback to DB if Polygon didn't return a symbol
     out = []
+    touched = []
     for s in symbols:
         s_norm = s.strip().upper()
         item = live_map.get(s_norm)
 
         if item and item.get("close") is not None:
+            row = _upsert_bar(
+                db,
+                s_norm,
+                item["timestamp"],
+                item["open"],
+                item["high"],
+                item["low"],
+                item["close"],
+                item.get("volume"),
+            )
+            touched.append(row)
             out.append(
                 {
                     "symbol": s_norm,
-                    "timestamp": item.get("timestamp"),
+                    "timestamp": item.get("timestamp").isoformat(),
                     "close": item.get("close"),
-                    "source": item.get("source", "rest_snapshot"),
+                    "source": item.get("source", "rest_agg"),
                 }
             )
             continue
@@ -123,7 +189,16 @@ def latest_bulk(symbols: list[str], db: Session = Depends(get_db)):
         else:
             out.append({"symbol": s_norm, "timestamp": None, "close": None, "source": "none"})
 
+    if touched:
+        db.commit()
+
     return out
+
+
+@router.post("/refresh/watchlist")
+def refresh_watchlist(limit: int = 50, db: Session = Depends(get_db)):
+    requested, refreshed, skipped = refresh_watchlist_db(db, limit=limit)
+    return {"requested": requested, "refreshed": refreshed, "skipped": skipped}
 
 
 @router.websocket("/ws/live")
@@ -141,8 +216,8 @@ async def ws_live_prices(ws: WebSocket):
         interval_ms = max(250, min(interval_ms, 10000))  # clamp 0.25s–10s
 
         while True:
-            # fetch_latest_stock_snapshot is blocking (requests), so run in a worker thread
-            data = await anyio.to_thread.run_sync(fetch_latest_stock_snapshot, symbols)
+            # fetch_latest_stock_bar_polygon is blocking, so run in a worker thread
+            data = await anyio.to_thread.run_sync(_fetch_bulk_latest_bars, symbols)
             await ws.send_text(json.dumps({"type": "prices", "data": data}))
             await asyncio.sleep(interval_ms / 1000.0)
 
