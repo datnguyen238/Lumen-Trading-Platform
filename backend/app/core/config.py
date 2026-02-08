@@ -7,8 +7,13 @@ class Settings(BaseSettings):
     # Your API key (keep this field name – it matches your codebase)
     polygon_api_key: str
 
-    # REST base. Use Massive host since your docs show api.massive.com
-    rest_base_url: str = "https://api.massive.com"
+    # REST base for Polygon snapshots
+    rest_base_url: str = "https://api.polygon.io"
+
+    # Watchlist refresh job
+    watchlist_refresh_enabled: bool = True
+    watchlist_refresh_interval_seconds: int = 300
+    watchlist_refresh_limit: int = 50
 
     class Config:
         env_file = ".env"

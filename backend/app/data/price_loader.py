@@ -1,8 +1,6 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from decimal import Decimal
 from typing import Optional
-
-import requests
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -12,6 +10,8 @@ from app.core.config import settings
 
 
 BINANCE_BASE_URL = "https://api.binance.com"
+_AGG_CACHE: dict[str, tuple[datetime, dict]] = {}
+_AGG_TTL_SECONDS = 300
 
 
 # def load_stock_history(db: Session, symbol: str, start: date, end: date, interval: str = "1d") -> int:
@@ -196,50 +196,50 @@ def load_stock_history_polygon(db: Session, api_key: str, symbol: str, start: da
     db.commit()
     return inserted_or_updated
 
-def fetch_latest_stock_snapshot(symbols: list[str]) -> list[dict]:
+def fetch_latest_stock_bar_polygon(symbol: str) -> dict | None:
     """
-    Returns [{symbol, close, timestamp}] using Massive/Polygon snapshot REST.
-    This is what your UI should use for 'live-ish' prices.
+    Returns latest aggregate bar using Polygon REST aggregates.
+    Shape: {symbol, timestamp, open, high, low, close, volume}
     """
-    symbols = [s.strip().upper() for s in symbols if s.strip()]
-    if not symbols:
-        return []
+    cached = _AGG_CACHE.get(symbol)
+    if cached:
+        cached_at, cached_item = cached
+        if (datetime.utcnow() - cached_at).total_seconds() < _AGG_TTL_SECONDS:
+            return cached_item
 
-    # Massive-style base URL from settings
-    url = f"{settings.rest_base_url}/v2/snapshot/locale/us/markets/stocks/tickers"
-    resp = requests.get(
-        url,
-        params={"tickers": ",".join(symbols), "apiKey": settings.polygon_api_key},
-        timeout=10,
-    )
-    # resp.raise_for_status()
+    client = RESTClient(settings.polygon_api_key)
+    end = date.today()
+    start = end - timedelta(days=7)
 
     try:
-        resp = requests.get(url, params=params, timeout=10)
-        if resp.status_code != 200:
-            # log it and gracefully fallback
-            return []
-        payload = resp.json()
-    except Exception:
-        return []
-
-    data = resp.json()
-
-    out = []
-    for item in data.get("tickers", []):
-        sym = item.get("ticker")
-        last_trade = item.get("lastTrade") or {}
-        p = last_trade.get("p")
-        t = last_trade.get("t")  # ms
-
-        ts = datetime.utcfromtimestamp(t / 1000.0).isoformat() if t else None
-
-        out.append(
-            {
-                "symbol": sym,
-                "close": str(p) if p is not None else None,
-                "timestamp": ts,
-                "source": "rest_snapshot",
-            }
+        aggs = list(
+            client.list_aggs(
+            ticker=symbol,
+            multiplier=1,
+            timespan="day",
+            from_=start.isoformat(),
+            to=end.isoformat(),
+            limit=50000,
+            )
         )
-    return out
+    except Exception:
+        return cached_item if cached else None
+
+    latest = aggs[-1] if aggs else None
+
+    if not latest:
+        return cached_item if cached else None
+
+    ts = datetime.utcfromtimestamp(latest.timestamp / 1000.0)
+    item = {
+        "symbol": symbol,
+        "timestamp": ts,
+        "open": latest.open,
+        "high": latest.high,
+        "low": latest.low,
+        "close": latest.close,
+        "volume": latest.volume,
+        "source": "rest_agg",
+    }
+    _AGG_CACHE[symbol] = (datetime.utcnow(), item)
+    return item

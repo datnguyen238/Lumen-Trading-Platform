@@ -14,7 +14,7 @@ export function AssetHeader(props: { symbol: string }) {
     setErr(null);
     setLatest(null);
 
-    api.getLatestPrice(symbol)
+    api.refreshLatestPrice(symbol)
       .then(setLatest)
       .catch((e) => setErr(e instanceof Error ? e.message : "Failed to load price"));
   }, [symbol]);
@@ -34,7 +34,7 @@ export function AssetHeader(props: { symbol: string }) {
             {close !== null && Number.isFinite(close) ? `$${close.toFixed(2)}` : "$—"}
           </div>
           <div className="text-sm text-muted-foreground">
-            {latest ? `as of ${(latest as any).timestamp ?? (latest as any).ts ?? ""}` : ""}
+            {latest ? `as of ${formatTimestamp((latest as any).timestamp ?? (latest as any).ts)}` : ""}
           </div>
         </div>
 
@@ -47,4 +47,11 @@ export function AssetHeader(props: { symbol: string }) {
       </div>
     </div>
   );
+}
+
+function formatTimestamp(ts?: string | null) {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts;
+  return d.toLocaleString();
 }

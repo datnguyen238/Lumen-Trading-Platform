@@ -83,6 +83,10 @@ export const api = {
   // Prices
   getLatestPrice: (symbol: string) =>
     request<PriceBarRead>(`/prices/latest?symbol=${encodeURIComponent(symbol)}`),
+  refreshLatestPrice: (symbol: string) =>
+    request<PriceBarRead>(`/prices/refresh?symbol=${encodeURIComponent(symbol)}`, {
+      method: "POST",
+    }),
 
   getHistory: (params: { symbol: string; start: string; end: string }) => {
     const q = new URLSearchParams({

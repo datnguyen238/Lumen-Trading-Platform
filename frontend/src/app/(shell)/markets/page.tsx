@@ -16,7 +16,7 @@ type UiState =
 const INDEX_SYMBOLS = [
   { label: "S&P 500", symbol: "SPY" },
   { label: "NASDAQ", symbol: "QQQ" },
-  { label: "^VIX", symbol: "^VIX" }, // adjust if your backend uses ^VIX or VIXY, etc.
+  { label: "VIX Proxy", symbol: "VIXY" },
 ];
 
 export default function MarketsPage() {
@@ -74,44 +74,7 @@ export default function MarketsPage() {
     ]);
   }, [state.kind, state.kind === "ready" ? state.symbols : null]);
 
-  useEffect(() => {
-    if (state.kind !== "ready") return;
-    if (requested.length === 0) return;
-
-    const ws = new WebSocket(`${wsBaseUrl()}/prices/ws/live`);
-
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ symbols: requested, interval_ms: 1000 }));
-    };
-
-    ws.onmessage = (evt) => {
-      try {
-        const msg = JSON.parse(evt.data);
-
-        if (msg.type === "prices" && Array.isArray(msg.data)) {
-          // If WS returns nothing, don't wipe good data
-          if (msg.data.length === 0) return;
-
-          setState((prev) => {
-            if (prev.kind !== "ready") return prev;
-
-            // Another guard: if WS only returns a tiny subset, don't wipe everything
-            // (optional, but good for stability)
-            if (prev.latest.length > 0 && msg.data.length < Math.min(3, prev.latest.length / 4)) {
-              return prev;
-            }
-
-            return { ...prev, latest: msg.data };
-          });
-        }
-      } catch {
-        // ignore bad messages
-      }
-    };
-
-
-    return () => ws.close();
-  }, [state.kind, requested.join("|")]);
+  // WS live updates disabled (rate limits / entitlement issues)
 
 
 
@@ -128,7 +91,7 @@ export default function MarketsPage() {
         label: x.label,
         symbol: x.symbol,
         price: bar ? formatUsd(bar.close) : "$—",
-        ts: bar?.timestamp,
+        ts: formatTimestamp(bar?.timestamp),
       };
     });
   }, [state]);
@@ -152,7 +115,7 @@ export default function MarketsPage() {
         return {
           symbol: s.symbol,
           close: b?.close ?? "NaN",       // PopularTickers can format or show —
-          timestamp: b?.timestamp ?? null,
+          timestamp: formatTimestamp(b?.timestamp),
         };
       });
   }, [state]);
@@ -207,10 +170,9 @@ function formatUsd(v: string) {
   return `$${n.toFixed(2)}`;
 }
 
-function wsBaseUrl() {
-  // If your API is on localhost:8000 in dev:
-  // return "ws://localhost:8000";
-  // If you want it to follow the current host:
-  const proto = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${proto}://${window.location.hostname}:8000`;
+function formatTimestamp(ts?: string | null) {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts;
+  return d.toLocaleString();
 }
