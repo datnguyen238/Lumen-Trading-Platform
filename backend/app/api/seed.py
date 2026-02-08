@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+import time
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -39,8 +40,13 @@ def upsert_symbol(db: Session, item: dict) -> None:
 
 
 @router.post("/seed/default-watchlist")
-def seed_default_watchlist(db: Session = Depends(get_db)):
-    start = date.today() - timedelta(days=365)
+def seed_default_watchlist(
+    load_history: bool = False,
+    days: int = 30,
+    delay_ms: int = 1200,
+    db: Session = Depends(get_db),
+):
+    start = date.today() - timedelta(days=days)
     end = date.today()
 
     results = []
@@ -59,20 +65,28 @@ def seed_default_watchlist(db: Session = Depends(get_db)):
             results.append({"symbol": symbol, "bars_loaded": 0, "skipped": "index_symbol"})
             continue
 
-        # 2) Load price history (POLYGON)
-        count = load_stock_history_polygon(
-            db=db,
-            api_key=settings.polygon_api_key ,
-            symbol=symbol,
-            start=start,
-            end=end,
-            timespan="day",
-            multiplier=1,
-        )
-        db.commit()
-
-
-        results.append({"symbol": symbol, "bars_loaded": count})
+        if load_history:
+            # 2) Load price history (POLYGON)
+            try:
+                count = load_stock_history_polygon(
+                    db=db,
+                    api_key=settings.polygon_api_key,
+                    symbol=symbol,
+                    start=start,
+                    end=end,
+                    timespan="day",
+                    multiplier=1,
+                )
+                db.commit()
+                results.append({"symbol": symbol, "bars_loaded": count})
+            except Exception as e:
+                db.rollback()
+                results.append(
+                    {"symbol": symbol, "bars_loaded": 0, "skipped": f"{type(e).__name__}: {e}"}
+                )
+            time.sleep(max(0, delay_ms) / 1000.0)
+        else:
+            results.append({"symbol": symbol, "bars_loaded": 0, "skipped": "history_disabled"})
 
     # Commit symbol inserts (and any pending changes)
     db.commit()

@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 
 const DEFAULT_SYMBOLS = ["AAPL", "TSLA", "NVDA", "MSFT", "AMZN", "BTCUSDT", "ETHUSDT"];
 
-export function TopBar() {
+export function TopBar(props: { onToggleSidebar?: () => void; sidebarOpen?: boolean }) {
   const router = useRouter();
   const { userId, accountId, setUserId, setAccountId } = useSession();
 
@@ -52,6 +52,16 @@ export function TopBar() {
   return (
     <div className="flex items-center gap-3 px-4 py-3 md:px-6">
       <div className="flex items-center gap-2">
+        {props.onToggleSidebar && props.sidebarOpen === false && (
+          <Button
+            variant="ghost"
+            onClick={props.onToggleSidebar}
+            className="h-9 w-9 px-0"
+            aria-label="Toggle sidebar"
+          >
+            ≡
+          </Button>
+        )}
         <Button variant="outline" onClick={() => setOpen(true)} className="h-9">
           Search
         </Button>

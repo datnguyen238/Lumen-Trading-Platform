@@ -22,14 +22,16 @@ export function PopularTickers(props: { rows: Row[] }) {
         </TableHeader>
         <TableBody>
           {props.rows.map((r) => (
-            <TableRow key={r.symbol} className="hover:bg-accent/50">
+            <TableRow key={r.symbol} className="odd:bg-muted/30 hover:bg-accent/50">
               <TableCell className="font-medium">
                 <Link href={`/asset/${encodeURIComponent(r.symbol)}`} className="hover:underline">
-                  {r.symbol}
+                  {displaySymbol(r.symbol)}
                 </Link>
               </TableCell>
-              <TableCell className="text-right">{formatPrice(r.close)}</TableCell>
-              <TableCell className="text-right text-muted-foreground">{r.timestamp}</TableCell>
+              <TableCell className="text-right tabular-nums">{formatPrice(r.close)}</TableCell>
+              <TableCell className="text-right text-muted-foreground tabular-nums">
+                {r.timestamp}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -43,4 +45,8 @@ function formatPrice(v: string) {
   if (!Number.isFinite(n)) return v;
   if (n >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
   return n.toFixed(2);
+}
+
+function displaySymbol(symbol: string) {
+  return symbol.replace(/^\^/, "");
 }

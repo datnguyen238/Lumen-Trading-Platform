@@ -8,14 +8,25 @@ const nav = [
   { href: "/orders", label: "Orders" },
 ];
 
-export function AppSidebar() {
+export function AppSidebar(props: { onToggle?: () => void }) {
   return (
     <div className="flex h-screen flex-col">
       <div className="flex items-center justify-between px-4 py-4">
         <Link href="/dashboard" className="text-sm font-semibold tracking-tight">
           Trading UI
         </Link>
-        <div className="text-xs text-muted-foreground">Paper</div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {props.onToggle && (
+            <button
+              type="button"
+              onClick={props.onToggle}
+              className="rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
+              aria-label="Close sidebar"
+            >
+              ≡
+            </button>
+          )}
+        </div>
       </div>
 
       <nav className="px-2">
@@ -23,14 +34,6 @@ export function AppSidebar() {
           <SidebarItem key={item.href} href={item.href} label={item.label} />
         ))}
       </nav>
-
-      <div className="mt-auto border-t p-4">
-        <div className="text-xs text-muted-foreground">Connection</div>
-        <div className="mt-1 flex items-center justify-between">
-          <div className="text-sm font-medium">API</div>
-          <span className="text-xs text-muted-foreground">Unknown</span>
-        </div>
-      </div>
     </div>
   );
 }
