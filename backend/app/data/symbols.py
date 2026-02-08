@@ -1,9 +1,9 @@
 INDEX_SYMBOLS = [
-    {"symbol": "^GSPC", "name": "S&P 500", "type": "index"},
-    {"symbol": "^DJI", "name": "Dow Jones", "type": "index"},
-    {"symbol": "^IXIC", "name": "NASDAQ", "type": "index"},
-    {"symbol": "^RUT", "name": "Russell 2000", "type": "index"},
-    {"symbol": "^VIX", "name": "VIX", "type": "index"},
+    {"symbol": "SPY", "name": "S&P 500", "type": "etf"},
+    {"symbol": "DIA", "name": "Dow Jones", "type": "etf"},
+    {"symbol": "QQQ", "name": "NASDAQ", "type": "etf"},
+    {"symbol": "IWM", "name": "Russell 2000", "type": "etf"},
+    {"symbol": "VIXY", "name": "VIX Proxy", "type": "etf"},
 ]
 
 POPULAR_STOCKS = [

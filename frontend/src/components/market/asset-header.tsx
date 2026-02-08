@@ -7,6 +7,7 @@ import type { PriceBarRead } from "@/lib/types";
 
 export function AssetHeader(props: { symbol: string }) {
   const symbol = props.symbol.toUpperCase();
+  const display = displaySymbol(symbol);
   const [latest, setLatest] = useState<PriceBarRead | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -25,7 +26,7 @@ export function AssetHeader(props: { symbol: string }) {
     <div className="flex items-start justify-between gap-4">
       <div>
         <div className="flex items-center gap-2">
-          <div className="text-xl font-semibold tracking-tight">{symbol}</div>
+          <div className="text-xl font-semibold tracking-tight">{display}</div>
           <Badge variant="secondary">{err ? "Error" : latest ? "Live" : "Loading"}</Badge>
         </div>
 
@@ -54,4 +55,8 @@ function formatTimestamp(ts?: string | null) {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return ts;
   return d.toLocaleString();
+}
+
+function displaySymbol(symbol: string) {
+  return symbol.replace(/^\^/, "");
 }

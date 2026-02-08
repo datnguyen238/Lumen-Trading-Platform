@@ -1,11 +1,13 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AssetHeader } from "@/components/market/asset-header";
 import { OrderTicket } from "@/components/market/order-ticket";
+import { PriceChart } from "@/components/market/price-chart";
 
 export default async function AssetPage(props: {
   params: Promise<{ symbol: string }>;
 }) {
-  const { symbol } = await props.params;
+  const { symbol: rawSymbol } = await props.params;
+  const symbol = safeDecode(rawSymbol);
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
@@ -16,8 +18,8 @@ export default async function AssetPage(props: {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Chart</CardTitle>
           </CardHeader>
-          <CardContent className="h-72 text-sm text-muted-foreground">
-            Chart placeholder. We’ll wire OHLC next (and add time-range tabs).
+          <CardContent>
+            <PriceChart symbol={symbol} />
           </CardContent>
         </Card>
 
@@ -36,4 +38,12 @@ export default async function AssetPage(props: {
       </div>
     </div>
   );
+}
+
+function safeDecode(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }

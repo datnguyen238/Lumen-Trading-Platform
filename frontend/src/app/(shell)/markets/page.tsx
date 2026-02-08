@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { IndexCards } from "@/components/market/index-cards";
 import { PopularTickers } from "@/components/market/popular-tickers";
 import type { BulkLatestItem, SymbolItem } from "@/lib/types";
@@ -16,7 +17,7 @@ type UiState =
 const INDEX_SYMBOLS = [
   { label: "S&P 500", symbol: "SPY" },
   { label: "NASDAQ", symbol: "QQQ" },
-  { label: "VIX Proxy", symbol: "VIXY" },
+  { label: "Dow Jones", symbol: "DIA" },
 ];
 
 export default function MarketsPage() {
@@ -76,7 +77,20 @@ export default function MarketsPage() {
 
   // WS live updates disabled (rate limits / entitlement issues)
 
+  const lastUpdated = useMemo(() => {
+    if (state.kind !== "ready") return "—";
+    const times = state.latest
+      .map((x) => (x.timestamp ? new Date(x.timestamp).getTime() : NaN))
+      .filter((t) => Number.isFinite(t));
+    if (times.length === 0) return "—";
+    return new Date(Math.max(...times)).toLocaleString();
+  }, [state]);
 
+  const symbolCount = state.kind === "ready" ? state.symbols.length : 0;
+  const pricedCount =
+    state.kind === "ready"
+      ? state.latest.filter((x) => x.close !== null && x.close !== undefined).length
+      : 0;
 
   const indexCards = useMemo(() => {
     if (state.kind !== "ready") {
@@ -125,10 +139,24 @@ export default function MarketsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="text-lg font-semibold">Markets</div>
-        <div className="text-sm text-muted-foreground">
-          Loads symbols, seeds defaults if needed, then fetches latest prices in bulk.
+      <div className="rounded-2xl border bg-gradient-to-br from-muted/40 via-background to-muted/10 p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Markets
+            </div>
+            <div className="mt-1 text-2xl font-semibold tracking-tight">
+              Market Pulse
+            </div>
+            <div className="mt-1 text-sm text-muted-foreground">
+              Live-ish snapshots blended with your cached history.
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">Symbols: {symbolCount}</Badge>
+            <Badge variant="outline">Priced: {pricedCount}</Badge>
+            <Badge variant="secondary">Updated: {lastUpdated}</Badge>
+          </div>
         </div>
       </div>
 
@@ -138,11 +166,17 @@ export default function MarketsPage() {
         </div>
       )}
 
-      <IndexCards items={indexCards} />
+      <div className="space-y-2">
+        <div className="text-sm font-medium text-muted-foreground">Indexes</div>
+        <IndexCards items={indexCards} />
+      </div>
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Popular Tickers</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-medium">Popular Tickers</CardTitle>
+            <Badge variant="outline">Top {popularRows.length || 0}</Badge>
+          </div>
         </CardHeader>
         <CardContent>
           {state.kind === "loading" && (
