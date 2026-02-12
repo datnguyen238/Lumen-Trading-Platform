@@ -12,7 +12,7 @@ Real-time WebSocket streaming was evaluated but not adopted due to cost constrai
 
 ### Backend (FastAPI)
 - Market data ingestion
-  - Stocks via **Polygon (Massive)**
+  - Stocks via **Yfinance**
   - Crypto via **Binance public API**
 - OHLCV storage for historical and latest prices
 - Paper trading engine
@@ -68,7 +68,7 @@ Lumen-Trading-Platform/
 - Pydantic
 
 ### Data Sources
-- Poylgon (stocks)
+- Yfinance (stocks)
 - Binance Public API (crypto)
 
 ## 🖥️ Running the Project Locally
@@ -128,4 +128,5 @@ It does not connect to real brokerage accounts and does not execute live trades.
 **Dat Nguyen**  
 B.S. Computer Science & Finance  
 Arizona State University
+
 **Dong Quan Tran**
