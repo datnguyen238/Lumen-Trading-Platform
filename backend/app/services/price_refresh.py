@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.data.price_loader import fetch_latest_stock_bar_polygon
+from app.data.price_loader import fetch_latest_stock_bar_yfinance
 from app.models.models import PriceBar, Symbol
 
 
@@ -17,10 +17,13 @@ def _upsert_bar(
     close_v: str | float | int,
     volume_v: str | float | int | None,
 ) -> PriceBar:
-    o = Decimal(str(open_v))
-    h = Decimal(str(high_v))
-    l = Decimal(str(low_v))
-    c = Decimal(str(close_v))
+    try:
+        o = Decimal(str(open_v))
+        h = Decimal(str(high_v))
+        l = Decimal(str(low_v))
+        c = Decimal(str(close_v))
+    except Exception as e:
+        raise ValueError(f"Invalid OHLC data for {symbol}: {e}")
     v = Decimal(str(volume_v)) if volume_v is not None else None
 
     existing = (
@@ -61,7 +64,7 @@ def refresh_watchlist_db(db: Session, limit: int = 50) -> tuple[int, int, int]:
     skipped = 0
 
     for sym in symbols:
-        item = fetch_latest_stock_bar_polygon(sym.symbol)
+        item = fetch_latest_stock_bar_yfinance(sym.symbol)
         if not item:
             skipped += 1
             continue

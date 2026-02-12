@@ -6,8 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.data.symbols import DEFAULT_WATCHLIST
-from app.data.price_loader import load_stock_history_polygon
-from app.core.config import settings
+from app.data.price_loader import load_stock_history
 
 
 # IMPORTANT: This must be the SQLAlchemy model (the one in models.py),
@@ -66,16 +65,14 @@ def seed_default_watchlist(
             continue
 
         if load_history:
-            # 2) Load price history (POLYGON)
+            # 2) Load price history (yfinance)
             try:
-                count = load_stock_history_polygon(
+                count = load_stock_history(
                     db=db,
-                    api_key=settings.polygon_api_key,
                     symbol=symbol,
                     start=start,
                     end=end,
-                    timespan="day",
-                    multiplier=1,
+                    interval="1d",
                 )
                 db.commit()
                 results.append({"symbol": symbol, "bars_loaded": count})

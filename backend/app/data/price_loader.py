@@ -1,83 +1,19 @@
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 from typing import Optional
-from sqlalchemy.orm import Session
+import math
+
+import requests
+import yfinance as yf
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.models.models import PriceBar
-from polygon import RESTClient
-from app.core.config import settings
 
 
 BINANCE_BASE_URL = "https://api.binance.com"
-_AGG_CACHE: dict[str, tuple[datetime, dict]] = {}
-_AGG_TTL_SECONDS = 300
-
-
-# def load_stock_history(db: Session, symbol: str, start: date, end: date, interval: str = "1d") -> int:
-#     import pandas as pd
-
-#     df = yf.download(symbol, start=start, end=end, interval=interval, progress=False)
-#     if df.empty:
-#         return 0
-#     # yfinance sometimes returns MultiIndex columns like ('Open','AAPL').
-#     # Flatten to single-level so row["Open"] is a scalar.
-#     if hasattr(df.columns, "levels"):  # MultiIndex
-#         df.columns = df.columns.get_level_values(0)
-
-
-#     df = df.reset_index()
-#     inserted_or_updated = 0
-
-#     for _, row in df.iterrows():
-#         ts_raw = row.get("Datetime") or row.get("Date")
-#         ts = ts_raw.to_pydatetime() if hasattr(ts_raw, "to_pydatetime") else ts_raw
-
-#         # Force naive datetime (drop timezone) to avoid SQLite issues
-#         if getattr(ts, "tzinfo", None) is not None:
-#             ts = ts.replace(tzinfo=None)
-
-#         # Skip bad rows (NaN OHLC)
-#         o, h, l, c = row.get("Open"), row.get("High"), row.get("Low"), row.get("Close")
-#         if pd.isna(o) or pd.isna(h) or pd.isna(l) or pd.isna(c):
-#             continue
-
-#         open_ = Decimal(str(o))
-#         high_ = Decimal(str(h))
-#         low_ = Decimal(str(l))
-#         close_ = Decimal(str(c))
-#         volume_ = _maybe_decimal(row.get("Volume"))
-
-#         # Upsert-style: update if exists, else insert
-#         existing = (
-#             db.query(PriceBar)
-#             .filter(PriceBar.symbol == symbol, PriceBar.timestamp == ts)
-#             .first()
-#         )
-
-#         if existing:
-#             existing.open = open_
-#             existing.high = high_
-#             existing.low = low_
-#             existing.close = close_
-#             existing.volume = volume_
-#         else:
-#             db.add(
-#                 PriceBar(
-#                     symbol=symbol,
-#                     timestamp=ts,
-#                     open=open_,
-#                     high=high_,
-#                     low=low_,
-#                     close=close_,
-#                     volume=volume_,
-#                 )
-#             )
-
-#         inserted_or_updated += 1
-
-#     db.commit()
-#     return inserted_or_updated
+_STOCK_CACHE: dict[str, tuple[datetime, dict]] = {}
+_STOCK_TTL_SECONDS = 300
 
 
 def load_crypto_klines(db: Session, symbol: str, interval: str = "1d", limit: int = 500) -> int:
@@ -118,53 +54,45 @@ def _maybe_decimal(v) -> Optional[Decimal]:
     except Exception:
         return None
 
+
 def load_stock_history(db: Session, symbol: str, start: date, end: date, interval: str = "1d") -> int:
-    """
-    Backwards-compatible name used by seed.py.
-    Uses Polygon/Massive REST aggregates via polygon-api-client.
-    """
-    # Map your interval to Polygon aggregates parameters
-    if interval == "1d":
-        timespan, multiplier = "day", 1
-    elif interval in ("1m", "1min", "1minute"):
-        timespan, multiplier = "minute", 1
-    else:
-        raise ValueError(f"Unsupported interval: {interval}")
+    symbol = str(symbol).strip().upper()
+    if not symbol:
+        return 0
 
-    return load_stock_history_polygon(
-        db=db,
-        api_key=settings.polygon_api_key,
-        symbol=symbol,
+    yf_symbol = _to_yfinance_symbol(symbol)
+    df = yf.download(
+        yf_symbol,
         start=start,
-        end=end,
-        timespan=timespan,
-        multiplier=multiplier,
+        end=end + timedelta(days=1),
+        interval=interval,
+        progress=False,
+        auto_adjust=False,
     )
+    if df.empty:
+        return 0
 
+    if hasattr(df.columns, "levels"):
+        df.columns = df.columns.get_level_values(0)
 
-
-def load_stock_history_polygon(db: Session, api_key: str, symbol: str, start: date, end: date, timespan: str = "day", multiplier: int = 1) -> int:
-    """
-    Loads OHLCV from Polygon aggregates into PriceBar.
-    Uses: /v2/aggs/ticker/{ticker}/range/{multiplier}/{timespan}/{from}/{to}  (via RESTClient)
-    """
-    client = RESTClient(api_key)
-
+    df = df.reset_index()
     inserted_or_updated = 0
 
-    # polygon-api-client returns objects with fields like:
-    # o, h, l, c, v, t (t is ms timestamp)
-    aggs = client.list_aggs(
-        ticker=symbol,
-        multiplier=multiplier,
-        timespan=timespan,
-        from_=start.isoformat(),
-        to=end.isoformat(),
-        limit=50000,
-    )
+    for _, row in df.iterrows():
+        ts_raw = row.get("Datetime") or row.get("Date")
+        ts = ts_raw.to_pydatetime() if hasattr(ts_raw, "to_pydatetime") else ts_raw
+        if getattr(ts, "tzinfo", None) is not None:
+            ts = ts.replace(tzinfo=None)
 
-    for a in aggs:
-        ts = datetime.utcfromtimestamp(a.timestamp / 1000.0)
+        o, h, l, c = row.get("Open"), row.get("High"), row.get("Low"), row.get("Close")
+        if any(v is None for v in (o, h, l, c)):
+            continue
+
+        open_ = Decimal(str(o))
+        high_ = Decimal(str(h))
+        low_ = Decimal(str(l))
+        close_ = Decimal(str(c))
+        volume_ = _maybe_decimal(row.get("Volume"))
 
         existing = (
             db.query(PriceBar)
@@ -173,21 +101,21 @@ def load_stock_history_polygon(db: Session, api_key: str, symbol: str, start: da
         )
 
         if existing:
-            existing.open = Decimal(str(a.open))
-            existing.high = Decimal(str(a.high))
-            existing.low = Decimal(str(a.low))
-            existing.close = Decimal(str(a.close))
-            existing.volume = Decimal(str(a.volume)) if a.volume is not None else None
+            existing.open = open_
+            existing.high = high_
+            existing.low = low_
+            existing.close = close_
+            existing.volume = volume_
         else:
             db.add(
                 PriceBar(
                     symbol=symbol,
                     timestamp=ts,
-                    open=Decimal(str(a.open)),
-                    high=Decimal(str(a.high)),
-                    low=Decimal(str(a.low)),
-                    close=Decimal(str(a.close)),
-                    volume=Decimal(str(a.volume)) if a.volume is not None else None,
+                    open=open_,
+                    high=high_,
+                    low=low_,
+                    close=close_,
+                    volume=volume_,
                 )
             )
 
@@ -196,50 +124,79 @@ def load_stock_history_polygon(db: Session, api_key: str, symbol: str, start: da
     db.commit()
     return inserted_or_updated
 
-def fetch_latest_stock_bar_polygon(symbol: str) -> dict | None:
-    """
-    Returns latest aggregate bar using Polygon REST aggregates.
-    Shape: {symbol, timestamp, open, high, low, close, volume}
-    """
-    cached = _AGG_CACHE.get(symbol)
+
+def fetch_latest_stock_bar_yfinance(symbol: str) -> dict | None:
+    symbol = str(symbol).strip().upper()
+    if not symbol:
+        return None
+
+    cached = _STOCK_CACHE.get(symbol)
     if cached:
         cached_at, cached_item = cached
-        if (datetime.utcnow() - cached_at).total_seconds() < _AGG_TTL_SECONDS:
+        if (datetime.utcnow() - cached_at).total_seconds() < _STOCK_TTL_SECONDS:
             return cached_item
 
-    client = RESTClient(settings.polygon_api_key)
+    yf_symbol = _to_yfinance_symbol(symbol)
     end = date.today()
     start = end - timedelta(days=7)
 
     try:
-        aggs = list(
-            client.list_aggs(
-            ticker=symbol,
-            multiplier=1,
-            timespan="day",
-            from_=start.isoformat(),
-            to=end.isoformat(),
-            limit=50000,
-            )
+        df = yf.download(
+            yf_symbol,
+            start=start,
+            end=end + timedelta(days=1),
+            interval="1d",
+            progress=False,
+            auto_adjust=False,
         )
     except Exception:
-        return cached_item if cached else None
+        return cached[1] if cached else None
 
-    latest = aggs[-1] if aggs else None
+    if df.empty:
+        return cached[1] if cached else None
 
-    if not latest:
-        return cached_item if cached else None
+    if hasattr(df.columns, "levels"):
+        df.columns = df.columns.get_level_values(0)
 
-    ts = datetime.utcfromtimestamp(latest.timestamp / 1000.0)
+    latest = df.iloc[-1]
+    ts = latest.name.to_pydatetime() if hasattr(latest.name, "to_pydatetime") else latest.name
+    if getattr(ts, "tzinfo", None) is not None:
+        ts = ts.replace(tzinfo=None)
+
+    o = latest.get("Open")
+    h = latest.get("High")
+    l = latest.get("Low")
+    c = latest.get("Close")
+    v = latest.get("Volume")
+
+    # Skip invalid rows (common for unsupported tickers/empty market data days)
+    if not _is_finite_number(o) or not _is_finite_number(h) or not _is_finite_number(l) or not _is_finite_number(c):
+        return cached[1] if cached else None
+
     item = {
         "symbol": symbol,
         "timestamp": ts,
-        "open": latest.open,
-        "high": latest.high,
-        "low": latest.low,
-        "close": latest.close,
-        "volume": latest.volume,
-        "source": "rest_agg",
+        "open": o,
+        "high": h,
+        "low": l,
+        "close": c,
+        "volume": v if _is_finite_number(v) else None,
+        "source": "yfinance",
     }
-    _AGG_CACHE[symbol] = (datetime.utcnow(), item)
+    _STOCK_CACHE[symbol] = (datetime.utcnow(), item)
     return item
+
+
+def _to_yfinance_symbol(symbol: str) -> str:
+    # Keep API symbol storage normalized (e.g. ^DJI), but use yfinance ticker format.
+    if symbol.startswith("^"):
+        return symbol
+    return symbol
+
+
+def _is_finite_number(v) -> bool:
+    try:
+        n = float(v)
+        return math.isfinite(n)
+    except Exception:
+        return False

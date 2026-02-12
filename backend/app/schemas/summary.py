@@ -15,5 +15,7 @@ class AccountSummary(BaseModel):
     account_id: int
     cash: Decimal
     equity: Decimal
+    realized_pnl: Decimal
     unrealized_pnl: Decimal
+    total_pnl: Decimal
     positions: Dict[str, SymbolPnL]
