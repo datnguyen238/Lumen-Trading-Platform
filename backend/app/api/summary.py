@@ -3,11 +3,44 @@ from sqlalchemy.orm import Session
 from decimal import Decimal
 
 from app.db.session import get_db
-from app.models.models import Account, Position
+from app.models.models import Account, Position, Trade
+from app.models.enums import OrderSide
 from app.schemas.summary import AccountSummary, SymbolPnL
 from app.services.pricing import get_mark_price
 
 router = APIRouter()
+
+
+def _compute_realized_pnl(db: Session, account_id: int) -> Decimal:
+    trades = (
+        db.query(Trade)
+        .filter(Trade.account_id == account_id)
+        .order_by(Trade.executed_at.asc(), Trade.id.asc())
+        .all()
+    )
+
+    state: dict[str, dict[str, Decimal]] = {}
+    realized_total = Decimal("0")
+
+    for t in trades:
+        symbol = str(t.symbol).strip().upper()
+        qty = Decimal(t.quantity)
+        price = Decimal(t.price)
+        s = state.setdefault(symbol, {"qty": Decimal("0"), "avg": Decimal("0")})
+
+        if t.side == OrderSide.BUY:
+            new_qty = s["qty"] + qty
+            if new_qty > 0:
+                s["avg"] = ((s["avg"] * s["qty"]) + (price * qty)) / new_qty
+            s["qty"] = new_qty
+        else:
+            sell_qty = min(qty, s["qty"])
+            realized_total += (price - s["avg"]) * sell_qty
+            s["qty"] = s["qty"] - sell_qty
+            if s["qty"] == 0:
+                s["avg"] = Decimal("0")
+
+    return realized_total
 
 
 @router.get("/accounts/{account_id}/summary", response_model=AccountSummary)
@@ -19,6 +52,7 @@ def account_summary(account_id: int, db: Session = Depends(get_db)):
     positions = db.query(Position).filter(Position.account_id == account_id).all()
 
     cash = Decimal(acc.cash_balance)
+    realized_total = _compute_realized_pnl(db, account_id)
     unrealized_total = Decimal("0")
     out_positions = {}
 
@@ -46,6 +80,8 @@ def account_summary(account_id: int, db: Session = Depends(get_db)):
         account_id=account_id,
         cash=cash,
         equity=equity,
+        realized_pnl=realized_total,
         unrealized_pnl=unrealized_total,
+        total_pnl=realized_total + unrealized_total,
         positions=out_positions,
     )

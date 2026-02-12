@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CartesianGrid, Line, LineChart, XAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 
 import { api } from "@/lib/api";
 import type { PriceBarRead } from "@/lib/types";
@@ -60,15 +60,19 @@ export function PriceChart(props: { symbol: string }) {
 
   const series = useMemo(() => {
     if (state.kind !== "ready") return [];
-    return state.data
+    return [...state.data]
+      .sort(
+        (a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      )
       .map((b) => ({
-        date: b.timestamp,
+        ts: new Date(b.timestamp).getTime(),
         close: Number(b.close),
         open: Number(b.open),
         high: Number(b.high),
         low: Number(b.low),
       }))
-      .filter((p) => Number.isFinite(p.close));
+      .filter((p) => Number.isFinite(p.close) && Number.isFinite(p.ts));
   }, [state]);
 
   const last = series.length > 0 ? series[series.length - 1] : null;
@@ -115,29 +119,40 @@ export function PriceChart(props: { symbol: string }) {
           <ChartContainer config={chartConfig} className="h-64 w-full">
             <LineChart data={series} margin={{ left: 12, right: 12 }}>
               <CartesianGrid vertical={false} />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                width={72}
+                domain={["auto", "auto"]}
+                tickFormatter={(value) => fmtAxisPrice(Number(value))}
+              />
               <XAxis
-                dataKey="date"
+                dataKey="ts"
+                type="number"
+                scale="time"
+                domain={["dataMin", "dataMax"]}
                 tickLine={false}
                 axisLine={false}
                 tickMargin={8}
                 minTickGap={32}
-                tickFormatter={(value) => formatAxisDate(value, range)}
+                tickFormatter={(value) => formatAxisDate(Number(value), range)}
               />
               <ChartTooltip
                 content={
                   <ChartTooltipContent
                     className="w-[160px]"
                     nameKey="close"
-                    labelFormatter={(value) => formatTooltipDate(value)}
+                    labelFormatter={(value) => formatTooltipDate(Number(value))}
                   />
                 }
               />
               <Line
                 dataKey="close"
-                type="monotone"
+                type="linear"
                 stroke="var(--color-close)"
                 strokeWidth={2}
-                dot={false}
+                dot={series.length === 1}
               />
             </LineChart>
           </ChartContainer>
@@ -165,17 +180,23 @@ function fmt(n: number) {
   return n.toFixed(2);
 }
 
-function formatAxisDate(value: string, range: RangeKey) {
+function formatAxisDate(value: number, range: RangeKey) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
-  if (range === "1W") {
+  if (range === "1W" || range === "1M" || range === "3M") {
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   }
-  return d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+  return d.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
 }
 
-function formatTooltipDate(value: string) {
+function formatTooltipDate(value: number) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function fmtAxisPrice(value: number) {
+  if (!Number.isFinite(value)) return "—";
+  if (value >= 1000) return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  return value.toFixed(2);
 }

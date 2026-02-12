@@ -9,6 +9,7 @@ from app.api.account_orders import router as account_orders_router
 from app.api.summary import router as summary_router
 from app.api.symbols import router as symbols_router
 from app.api.seed import router as seed_router
+from app.api.admin import router as admin_router
 
 
 
@@ -23,6 +24,6 @@ api_router.include_router(account_orders_router, tags=["accounts"])
 api_router.include_router(summary_router, tags=["accounts"])
 api_router.include_router(symbols_router, tags=["symbols"])
 api_router.include_router(seed_router, tags=["seed"])
-
+api_router.include_router(admin_router, tags=["admin"])
 
 

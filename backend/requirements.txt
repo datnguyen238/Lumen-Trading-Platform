@@ -4,5 +4,6 @@ SQLAlchemy>=2.0
 pydantic[email]>=2.7
 pydantic-settings>=2.0
 python-dotenv
-polygon-api-client
 requests
+yfinance
+pytest>=8.0

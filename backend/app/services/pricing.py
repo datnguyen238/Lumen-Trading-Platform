@@ -5,6 +5,7 @@ from app.models.models import PriceBar
 
 
 def get_last_close(db: Session, symbol: str) -> Decimal:
+    symbol = str(symbol).strip().upper()
     row = (
         db.query(PriceBar)
         .filter(PriceBar.symbol == symbol)
@@ -16,6 +17,7 @@ def get_last_close(db: Session, symbol: str) -> Decimal:
     return Decimal(row.close)
 
 def get_mark_price(db: Session, symbol: str) -> Decimal:
+    symbol = str(symbol).strip().upper()
     row = (
         db.query(PriceBar)
         .filter(PriceBar.symbol == symbol)
@@ -25,4 +27,3 @@ def get_mark_price(db: Session, symbol: str) -> Decimal:
     if not row:
         raise ValueError(f"No price data for '{symbol}'")
     return Decimal(row.close)
-

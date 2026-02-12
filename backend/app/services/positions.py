@@ -7,6 +7,7 @@ from app.models.enums import OrderSide
 
 
 def get_or_create_position(db: Session, account_id: int, symbol: str) -> Position:
+    symbol = str(symbol).strip().upper()
     pos = (
         db.query(Position)
         .filter(and_(Position.account_id == account_id, Position.symbol == symbol))
@@ -21,6 +22,12 @@ def get_or_create_position(db: Session, account_id: int, symbol: str) -> Positio
 
 
 def apply_fill(db: Session, account: Account, symbol: str, side: OrderSide, qty: Decimal, price: Decimal) -> None:
+    if qty <= 0:
+        raise ValueError("Quantity must be greater than 0")
+    if price <= 0:
+        raise ValueError("Price must be greater than 0")
+
+    symbol = str(symbol).strip().upper()
     pos = get_or_create_position(db, account.id, symbol)
 
     if side == OrderSide.BUY:
@@ -32,7 +39,15 @@ def apply_fill(db: Session, account: Account, symbol: str, side: OrderSide, qty:
         pos.quantity = new_qty
         account.cash_balance = Decimal(account.cash_balance) - (qty * price)
     else:
-        pos.quantity = Decimal(pos.quantity) - qty
+        current_qty = Decimal(pos.quantity)
+        if current_qty < qty:
+            raise ValueError("Insufficient position quantity")
+        pos.quantity = current_qty - qty
         account.cash_balance = Decimal(account.cash_balance) + (qty * price)
+        if Decimal(pos.quantity) == 0:
+            pos.average_price = Decimal("0")
+
+    if Decimal(account.cash_balance) < 0:
+        raise ValueError("Insufficient cash balance")
 
     db.flush()

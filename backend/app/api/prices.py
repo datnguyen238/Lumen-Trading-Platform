@@ -9,13 +9,12 @@ from sqlalchemy import desc
 from datetime import datetime, date
 
 from app.db.session import get_db
-from app.core.config import settings
 from app.models.models import PriceBar
 from app.schemas.prices import PriceBarRead, LoadStockRequest, LoadCryptoRequest
 from app.data.price_loader import (
-    load_stock_history_polygon,
+    load_stock_history,
     load_crypto_klines,
-    fetch_latest_stock_bar_polygon,
+    fetch_latest_stock_bar_yfinance,
 )
 from app.services.price_refresh import _upsert_bar, refresh_watchlist_db
 
@@ -29,7 +28,7 @@ def _fetch_bulk_latest_bars(symbols: list[str]) -> list[dict]:
     out = []
     for s in symbols[:MAX_LIVE_BULK]:
         s_norm = s.strip().upper()
-        item = fetch_latest_stock_bar_polygon(s_norm)
+        item = fetch_latest_stock_bar_yfinance(s_norm)
         if not item:
             continue
         out.append(
@@ -37,7 +36,7 @@ def _fetch_bulk_latest_bars(symbols: list[str]) -> list[dict]:
                 "symbol": s_norm,
                 "timestamp": item["timestamp"].isoformat(),
                 "close": item["close"],
-                "source": item.get("source", "rest_agg"),
+                "source": item.get("source", "yfinance"),
             }
         )
     return out
@@ -45,18 +44,14 @@ def _fetch_bulk_latest_bars(symbols: list[str]) -> list[dict]:
 @router.post("/load/stock")
 def load_stock(req: LoadStockRequest, db: Session = Depends(get_db)):
     try:
-        # Polygon uses "day" / "minute" timespans; map your interval if needed.
-        # For v1, assume daily bars.
-        count = load_stock_history_polygon(
+        count = load_stock_history(
             db=db,
-            api_key=settings.polygon_api_key ,
             symbol=req.symbol,
             start=req.start,
             end=req.end,
-            timespan="day",
-            multiplier=1,
+            interval=req.interval,
         )
-        return {"message": f"Loaded {count} bars for {req.symbol} (Polygon)"}
+        return {"message": f"Loaded {count} bars for {req.symbol} (yfinance)"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Stock load failed: {type(e).__name__}: {e}")
 
@@ -85,24 +80,27 @@ def latest(symbol: str, db: Session = Depends(get_db)):
 @router.post("/refresh", response_model=PriceBarRead)
 def refresh(symbol: str, db: Session = Depends(get_db)):
     """
-    Fetch latest aggregate bar and upsert into DB, then return latest row.
+    Fetch latest yfinance bar and upsert into DB, then return latest row.
     """
     s_norm = symbol.strip().upper()
-    item = fetch_latest_stock_bar_polygon(s_norm)
+    item = fetch_latest_stock_bar_yfinance(s_norm)
     if item:
-        row = _upsert_bar(
-            db,
-            s_norm,
-            item["timestamp"],
-            item["open"],
-            item["high"],
-            item["low"],
-            item["close"],
-            item.get("volume"),
-        )
-        db.commit()
-        db.refresh(row)
-        return row
+        try:
+            row = _upsert_bar(
+                db,
+                s_norm,
+                item["timestamp"],
+                item["open"],
+                item["high"],
+                item["low"],
+                item["close"],
+                item.get("volume"),
+            )
+            db.commit()
+            db.refresh(row)
+            return row
+        except ValueError:
+            db.rollback()
 
     # Fallback to most recent DB row
     row = (
@@ -134,15 +132,15 @@ def history(symbol: str, start: date, end: date, db: Session = Depends(get_db)):
 
 @router.post("/latest/bulk")
 def latest_bulk(symbols: list[str], db: Session = Depends(get_db)):
-    # 1) Try Polygon aggregates first (latest bar)
+    # 1) Try yfinance first (latest bar)
     live_map = {}
     for s in symbols[:MAX_LIVE_BULK]:
         s_norm = s.strip().upper()
-        item = fetch_latest_stock_bar_polygon(s_norm)
+        item = fetch_latest_stock_bar_yfinance(s_norm)
         if item:
             live_map[s_norm] = item
 
-    # 2) Fallback to DB if Polygon didn't return a symbol
+    # 2) Fallback to DB if yfinance didn't return a symbol
     out = []
     touched = []
     for s in symbols:
@@ -150,26 +148,29 @@ def latest_bulk(symbols: list[str], db: Session = Depends(get_db)):
         item = live_map.get(s_norm)
 
         if item and item.get("close") is not None:
-            row = _upsert_bar(
-                db,
-                s_norm,
-                item["timestamp"],
-                item["open"],
-                item["high"],
-                item["low"],
-                item["close"],
-                item.get("volume"),
-            )
-            touched.append(row)
-            out.append(
-                {
-                    "symbol": s_norm,
-                    "timestamp": item.get("timestamp").isoformat(),
-                    "close": item.get("close"),
-                    "source": item.get("source", "rest_agg"),
-                }
-            )
-            continue
+            try:
+                row = _upsert_bar(
+                    db,
+                    s_norm,
+                    item["timestamp"],
+                    item["open"],
+                    item["high"],
+                    item["low"],
+                    item["close"],
+                    item.get("volume"),
+                )
+                touched.append(row)
+                out.append(
+                    {
+                        "symbol": s_norm,
+                        "timestamp": item.get("timestamp").isoformat(),
+                        "close": item.get("close"),
+                        "source": item.get("source", "yfinance"),
+                    }
+                )
+                continue
+            except ValueError:
+                pass
 
         row = (
             db.query(PriceBar)
@@ -216,7 +217,7 @@ async def ws_live_prices(ws: WebSocket):
         interval_ms = max(250, min(interval_ms, 10000))  # clamp 0.25s–10s
 
         while True:
-            # fetch_latest_stock_bar_polygon is blocking, so run in a worker thread
+            # fetch_latest_stock_bar_yfinance is blocking, so run in a worker thread
             data = await anyio.to_thread.run_sync(_fetch_bulk_latest_bars, symbols)
             await ws.send_text(json.dumps({"type": "prices", "data": data}))
             await asyncio.sleep(interval_ms / 1000.0)
