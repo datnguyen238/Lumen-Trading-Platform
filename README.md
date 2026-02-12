@@ -68,7 +68,7 @@ Lumen-Trading-Platform/
 - Pydantic
 
 ### Data Sources
-- Yahoo Finance (stocks)
+- Poylgon (stocks)
 - Binance Public API (crypto)
 
 ## 🖥️ Running the Project Locally
