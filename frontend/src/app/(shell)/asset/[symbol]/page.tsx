@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AssetHeader } from "@/components/market/asset-header";
 import { OrderTicket } from "@/components/market/order-ticket";
 import { PriceChart } from "@/components/market/price-chart";
+import { AssetOverview } from "@/components/market/asset-overview";
 
 export default async function AssetPage(props: {
   params: Promise<{ symbol: string }>;
@@ -27,8 +28,8 @@ export default async function AssetPage(props: {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Overview</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Stats / description placeholder.
+          <CardContent>
+            <AssetOverview symbol={symbol} />
           </CardContent>
         </Card>
       </div>

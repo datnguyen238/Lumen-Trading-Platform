@@ -12,15 +12,15 @@ export function AssetHeader(props: { symbol: string }) {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    setErr(null);
-    setLatest(null);
-
     api.refreshLatestPrice(symbol)
-      .then(setLatest)
+      .then((data) => {
+        setErr(null);
+        setLatest(data);
+      })
       .catch((e) => setErr(e instanceof Error ? e.message : "Failed to load price"));
   }, [symbol]);
 
-  const close = latest ? Number((latest as any).close) : null;
+  const close = latest ? Number(latest.close) : null;
 
   return (
     <div className="flex items-start justify-between gap-4">
@@ -35,7 +35,7 @@ export function AssetHeader(props: { symbol: string }) {
             {close !== null && Number.isFinite(close) ? `$${close.toFixed(2)}` : "$—"}
           </div>
           <div className="text-sm text-muted-foreground">
-            {latest ? `as of ${formatTimestamp((latest as any).timestamp ?? (latest as any).ts)}` : ""}
+            {latest ? `as of ${formatTimestamp(latest.timestamp)}` : ""}
           </div>
         </div>
 

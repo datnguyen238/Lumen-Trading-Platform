@@ -45,6 +45,17 @@ export type OrderRead = {
   created_at?: string;
 };
 
+export type TradeRead = {
+  id: number;
+  account_id: number;
+  order_id: number;
+  symbol: string;
+  side: "BUY" | "SELL";
+  quantity: string;
+  price: string;
+  executed_at: string;
+};
+
 export type AccountSummary = {
   account_id: number;
   cash: string;

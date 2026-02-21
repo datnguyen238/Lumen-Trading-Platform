@@ -6,6 +6,7 @@ import type {
   OrderRead,
   PositionRead,
   PriceBarRead,
+  TradeRead,
   UserRead,
 } from "@/lib/types";
 import type { BulkLatestItem, SymbolItem } from "@/lib/types";
@@ -120,7 +121,7 @@ export const api = {
   getOrders: (accountId: number) =>
     request<OrderRead[]>(`/accounts/${accountId}/orders`),
   getTrades: (accountId: number) =>
-    request<any[]>(`/accounts/${accountId}/trades`),
+    request<TradeRead[]>(`/accounts/${accountId}/trades`),
 
     // Symbols + seeding
   getSymbols: () => request<SymbolItem[]>("/symbols"),
