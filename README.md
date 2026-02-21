@@ -3,8 +3,8 @@
 **Lumen Trading Platform** is a full-stack, paper-trading system designed to simulate real-world trading workflows for equities and crypto.  
 It combines a **FastAPI backend** for market data ingestion, portfolio accounting, and order execution with a **Next.js frontend** inspired by modern trading platforms (Robinhood, Webull, Binance).
 
-This project is built as a **monorepo** and is intentionally designed to scale toward authentication, real-time data, and advanced analytics. 
-Real-time WebSocket streaming was evaluated but not adopted due to cost constraints relative to the project’s goals. A REST-based architecture with caching was chosen instead to emphasize scalability, determinism, and production-oriented design.
+This project is built as a **monorepo** and is intentionally designed to scale toward authentication, real-time data, and advanced analytics.  
+The current build uses **yfinance** for equities, **PostgreSQL** (Supabase) for persistence, and a pragmatic live data strategy: optional yfinance WebSocket, polling fallback, and TTL-cached latest price fetches to control provider load.
 
 ---
 
@@ -31,8 +31,11 @@ Real-time WebSocket streaming was evaluated but not adopted due to cost constrai
 - Asset detail pages:
   - Latest price display
   - Order ticket (market orders)
+  - Historical chart (1W/1M/3M/6M/1Y)
+  - Position metrics + PnL sparkline
+  - Orders/Trades activity panel
 - Markets view for symbol discovery
-- Orders & watchlists scaffolding
+- Market board with filtering + quick refresh
 - API-driven UI (no mock-only components)
 
 ---
@@ -60,14 +63,21 @@ Lumen-Trading-Platform/
 - TypeScript
 - Tailwind CSS
 - shadcn/ui
+- Recharts
 
 ### Backend
 - Python
 - FastAPI
 - SQLAlchemy
 - Pydantic
+- psycopg2 (PostgreSQL driver)
+- yfinance WebSocket + polling fallback
+- In-memory TTL caching for live quote fetches
 
-### Data Sources
+### Database
+- PostgreSQL 16 (local Docker) or Supabase Postgres
+
+### Market Data Sources
 - Yfinance (stocks)
 - Binance Public API (crypto)
 
@@ -82,10 +92,22 @@ Lumen-Trading-Platform/
 ### Backend Setup
 ```bash
 cd backend
+cp .env.example .env
+docker compose up -d
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
+```
+
+Example `backend/.env`:
+```env
+DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/lumen_trading
+YFINANCE_WS_ENABLED=false
+LIVE_PRICE_TTL_SECONDS=300
+WATCHLIST_REFRESH_ENABLED=true
+WATCHLIST_REFRESH_INTERVAL_SECONDS=300
+WATCHLIST_REFRESH_LIMIT=50
 ```
 
 ### Backend Setup (completed)
@@ -110,6 +132,8 @@ npm run dev
 - Frontend stores user_id and account_id locally to simulate sessions
 - Architecture is auth-ready to minimize future refactors
 - Market orders currently fill at the latest available close price
+- Live prices use cached fetches (TTL) to reduce provider load
+- Search can add new symbols to DB dynamically
 - Designed as a learning + portfolio project, not a live trading system
 
 ## 🛣️ Roadmap

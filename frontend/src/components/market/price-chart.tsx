@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 
 import { api } from "@/lib/api";
@@ -31,27 +31,51 @@ export function PriceChart(props: { symbol: string }) {
   const symbol = props.symbol.toUpperCase();
   const [range, setRange] = useState<RangeKey>("1M");
   const [state, setState] = useState<UiState>({ kind: "idle" });
+  const hydratedSymbolRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    const r = RANGES.find((x) => x.key === range) ?? RANGES[2];
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - r.days);
 
-    setState({ kind: "loading" });
-    api.getHistory({ symbol, start: toYmd(start), end: toYmd(end) })
-      .then((data) => {
-        if (cancelled) return;
-        setState({ kind: "ready", data });
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setState({
-          kind: "error",
-          message: e instanceof Error ? e.message : "Failed to load chart",
+    async function run() {
+      const r = RANGES.find((x) => x.key === range) ?? RANGES[2];
+      const end = new Date();
+      const start = new Date();
+      start.setDate(end.getDate() - r.days);
+
+      setState({ kind: "loading" });
+
+      // For newly searched symbols, hydrate last 6 months so chart has data.
+      if (hydratedSymbolRef.current !== symbol) {
+        const preloadStart = new Date();
+        preloadStart.setDate(end.getDate() - 180);
+        try {
+          await api.loadStock({
+            symbol,
+            start: toYmd(preloadStart),
+            end: toYmd(end),
+            interval: "1d",
+          });
+        } catch {
+          // Best-effort preload; history query below still decides UI state.
+        }
+        hydratedSymbolRef.current = symbol;
+      }
+
+      api.getHistory({ symbol, start: toYmd(start), end: toYmd(end) })
+        .then((data) => {
+          if (cancelled) return;
+          setState({ kind: "ready", data });
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setState({
+            kind: "error",
+            message: e instanceof Error ? e.message : "Failed to load chart",
+          });
         });
-      });
+    }
+
+    run();
 
     return () => {
       cancelled = true;

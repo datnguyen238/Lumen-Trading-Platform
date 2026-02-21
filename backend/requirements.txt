@@ -6,4 +6,5 @@ pydantic-settings>=2.0
 python-dotenv
 requests
 yfinance
+psycopg2-binary
 pytest>=8.0

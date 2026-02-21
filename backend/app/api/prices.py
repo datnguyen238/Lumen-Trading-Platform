@@ -1,14 +1,26 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import WebSocket, WebSocketDisconnect
 import asyncio
+import contextlib
 import json
-import anyio
+import threading
+import time
+from datetime import datetime, timezone
+import certifi
+
+# Force TLS trust bundle for websocket/https clients on local macOS Python setups.
+os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
+
+import yfinance as yf
 
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from datetime import datetime, date
+from datetime import date
 
 from app.db.session import get_db
+from app.core.config import settings
 from app.models.models import PriceBar
 from app.schemas.prices import PriceBarRead, LoadStockRequest, LoadCryptoRequest
 from app.data.price_loader import (
@@ -23,19 +35,41 @@ from app.services.price_refresh import _upsert_bar, refresh_watchlist_db
 router = APIRouter()
 
 MAX_LIVE_BULK = 5
+_LIVE_CACHE_LOCK = threading.Lock()
+_LIVE_CACHE: dict[str, tuple[float, dict]] = {}
+
+
+def _get_live_item(symbol: str, force_refresh: bool = False) -> dict | None:
+    ttl = max(1, int(settings.live_price_ttl_seconds))
+    now = time.time()
+
+    if not force_refresh:
+        with _LIVE_CACHE_LOCK:
+            cached = _LIVE_CACHE.get(symbol)
+            if cached and (now - cached[0]) <= ttl:
+                return cached[1]
+
+    item = fetch_latest_stock_bar_yfinance(symbol)
+    if not item:
+        return None
+
+    with _LIVE_CACHE_LOCK:
+        _LIVE_CACHE[symbol] = (now, item)
+    return item
+
 
 def _fetch_bulk_latest_bars(symbols: list[str]) -> list[dict]:
     out = []
     for s in symbols[:MAX_LIVE_BULK]:
         s_norm = s.strip().upper()
-        item = fetch_latest_stock_bar_yfinance(s_norm)
+        item = _get_live_item(s_norm)
         if not item:
             continue
         out.append(
             {
                 "symbol": s_norm,
                 "timestamp": item["timestamp"].isoformat(),
-                "close": item["close"],
+                "close": str(item["close"]),
                 "source": item.get("source", "yfinance"),
             }
         )
@@ -83,7 +117,7 @@ def refresh(symbol: str, db: Session = Depends(get_db)):
     Fetch latest yfinance bar and upsert into DB, then return latest row.
     """
     s_norm = symbol.strip().upper()
-    item = fetch_latest_stock_bar_yfinance(s_norm)
+    item = _get_live_item(s_norm, force_refresh=True)
     if item:
         try:
             row = _upsert_bar(
@@ -136,7 +170,7 @@ def latest_bulk(symbols: list[str], db: Session = Depends(get_db)):
     live_map = {}
     for s in symbols[:MAX_LIVE_BULK]:
         s_norm = s.strip().upper()
-        item = fetch_latest_stock_bar_yfinance(s_norm)
+        item = _get_live_item(s_norm)
         if item:
             live_map[s_norm] = item
 
@@ -206,6 +240,14 @@ def refresh_watchlist(limit: int = 50, db: Session = Depends(get_db)):
 async def ws_live_prices(ws: WebSocket):
     await ws.accept()
 
+    yws = None
+
+    async def _send_prices(decoded: dict):
+        item = _normalize_ws_payload(decoded)
+        if not item:
+            return
+        await ws.send_text(json.dumps({"type": "prices", "data": [item]}))
+
     try:
         # First message should be config JSON, e.g.:
         # {"symbols":["AAPL","MSFT","SPY"],"interval_ms":1000}
@@ -213,14 +255,49 @@ async def ws_live_prices(ws: WebSocket):
         cfg = json.loads(raw)
 
         symbols = [s.strip().upper() for s in cfg.get("symbols", []) if str(s).strip()]
-        interval_ms = int(cfg.get("interval_ms", 1000))
-        interval_ms = max(250, min(interval_ms, 10000))  # clamp 0.25s–10s
+        if not symbols:
+            await ws.send_text(json.dumps({"type": "error", "message": "No symbols provided"}))
+            return
 
-        while True:
-            # fetch_latest_stock_bar_yfinance is blocking, so run in a worker thread
-            data = await anyio.to_thread.run_sync(_fetch_bulk_latest_bars, symbols)
-            await ws.send_text(json.dumps({"type": "prices", "data": data}))
-            await asyncio.sleep(interval_ms / 1000.0)
+        stream_task = None
+        if settings.yfinance_ws_enabled:
+            try:
+                yws = yf.AsyncWebSocket()
+                await yws.subscribe(symbols)
+                stream_task = asyncio.create_task(yws.listen(_send_prices))
+            except Exception as e:
+                # Fallback when upstream yfinance websocket cannot connect (TLS, network, etc.)
+                await ws.send_text(
+                    json.dumps(
+                        {
+                            "type": "warning",
+                            "message": f"yfinance websocket unavailable, using polling fallback: {type(e).__name__}",
+                        }
+                    )
+                )
+                stream_task = asyncio.create_task(_poll_and_push(ws, symbols))
+        else:
+            await ws.send_text(
+                json.dumps(
+                    {
+                        "type": "warning",
+                        "message": "yfinance websocket disabled; using polling fallback",
+                    }
+                )
+            )
+            stream_task = asyncio.create_task(_poll_and_push(ws, symbols))
+
+        try:
+            while True:
+                # Wait for client disconnect; any extra client message is ignored.
+                await ws.receive_text()
+        except WebSocketDisconnect:
+            if stream_task:
+                stream_task.cancel()
+            with contextlib.suppress(Exception):
+                if yws is not None:
+                    await yws.close()
+            return
 
     except WebSocketDisconnect:
         return
@@ -230,3 +307,68 @@ async def ws_live_prices(ws: WebSocket):
             await ws.send_text(json.dumps({"type": "error", "message": str(e)}))
         except Exception:
             pass
+    finally:
+        if yws is not None:
+            with contextlib.suppress(Exception):
+                await yws.close()
+
+
+def _normalize_ws_payload(decoded: dict) -> dict | None:
+    if not isinstance(decoded, dict):
+        return None
+
+    symbol = (
+        decoded.get("id")
+        or decoded.get("symbol")
+        or decoded.get("ticker")
+    )
+    if not symbol:
+        return None
+    symbol = str(symbol).strip().upper()
+
+    price = (
+        decoded.get("price")
+        or decoded.get("last_price")
+        or decoded.get("regular_market_price")
+    )
+    if price is None:
+        return None
+
+    ts_raw = (
+        decoded.get("time")
+        or decoded.get("timestamp")
+        or decoded.get("regular_market_time")
+    )
+    ts = _normalize_ws_timestamp(ts_raw)
+
+    return {
+        "symbol": symbol,
+        "close": str(price),
+        "timestamp": ts,
+        "source": "yfinance_ws",
+    }
+
+
+def _normalize_ws_timestamp(value) -> str:
+    if value is None:
+        return datetime.now(timezone.utc).isoformat()
+
+    if isinstance(value, (int, float)):
+        if value > 1e12:
+            dt = datetime.fromtimestamp(value / 1000.0, tz=timezone.utc)
+        else:
+            dt = datetime.fromtimestamp(value, tz=timezone.utc)
+        return dt.isoformat()
+
+    try:
+        return str(value)
+    except Exception:
+        return datetime.now(timezone.utc).isoformat()
+
+
+async def _poll_and_push(ws: WebSocket, symbols: list[str]) -> None:
+    while True:
+        data = _fetch_bulk_latest_bars(symbols)
+        if data:
+            await ws.send_text(json.dumps({"type": "prices", "data": data}))
+        await asyncio.sleep(2.0)

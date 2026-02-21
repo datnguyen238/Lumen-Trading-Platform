@@ -23,28 +23,93 @@ export function TopBar(props: { onToggleSidebar?: () => void; sidebarOpen?: bool
 
   const [open, setOpen] = useState(false);
   const [health, setHealth] = useState<"ok" | "down" | "checking">("checking");
+  const [symbols, setSymbols] = useState<string[]>(DEFAULT_SYMBOLS);
 
-  const symbols = useMemo(() => DEFAULT_SYMBOLS, []);
+  const symbolOptions = useMemo(() => {
+    const unique = new Set<string>();
+    for (const s of symbols) {
+      const norm = String(s).trim().toUpperCase();
+      if (norm) unique.add(norm);
+    }
+    return Array.from(unique).sort();
+  }, [symbols]);
 
   useEffect(() => {
     let cancelled = false;
-    api.health()
-      .then((r) => {
+    const pollHealth = () => {
+      api.health()
+        .then((r) => {
+          if (cancelled) return;
+          setHealth(r.status === "ok" ? "ok" : "down");
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setHealth("down");
+        });
+    };
+
+    pollHealth();
+    const intervalId = window.setInterval(() => {
+      pollHealth();
+    }, 10000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getSymbols()
+      .then((rows) => {
         if (cancelled) return;
-        setHealth(r.status === "ok" ? "ok" : "down");
+        const dbSymbols = rows.map((r) => r.symbol);
+        if (dbSymbols.length > 0) {
+          setSymbols((prev) => [...new Set([...prev, ...dbSymbols])]);
+        }
       })
       .catch(() => {
-        if (cancelled) return;
-        setHealth("down");
+        // Keep fallback list if backend symbols are unavailable.
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  function goToSymbol(symbol: string) {
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    api
+      .getSymbols()
+      .then((rows) => {
+        if (cancelled) return;
+        const dbSymbols = rows.map((r) => r.symbol);
+        if (dbSymbols.length > 0) {
+          setSymbols((prev) => [...new Set([...prev, ...dbSymbols])]);
+        }
+      })
+      .catch(() => {
+        // Keep fallback list if backend symbols are unavailable.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  async function goToSymbol(symbol: string) {
     const cleaned = symbol.trim().toUpperCase();
     if (!cleaned) return;
+    try {
+      await api.addSymbol({ symbol: cleaned });
+      const rows = await api.getSymbols();
+      const dbSymbols = rows.map((r) => r.symbol);
+      if (dbSymbols.length > 0) {
+        setSymbols((prev) => [...new Set([...prev, ...dbSymbols])]);
+      }
+    } catch {
+      // Keep search navigation working even if symbol add fails.
+    }
     setOpen(false);
     router.push(`/asset/${encodeURIComponent(cleaned)}`);
   }
@@ -99,15 +164,15 @@ export function TopBar(props: { onToggleSidebar?: () => void; sidebarOpen?: bool
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               const value = (e.target as HTMLInputElement).value;
-              goToSymbol(value);
+              void goToSymbol(value);
             }
           }}
         />
         <CommandList>
           <CommandEmpty>No results.</CommandEmpty>
-          <CommandGroup heading="Popular">
-            {symbols.map((s) => (
-              <CommandItem key={s} onSelect={() => goToSymbol(s)}>
+          <CommandGroup heading="Symbols">
+            {symbolOptions.map((s) => (
+              <CommandItem key={s} onSelect={() => void goToSymbol(s)}>
                 {s}
               </CommandItem>
             ))}
