@@ -100,16 +100,6 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-Example `backend/.env`:
-```env
-DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/lumen_trading
-YFINANCE_WS_ENABLED=false
-LIVE_PRICE_TTL_SECONDS=300
-WATCHLIST_REFRESH_ENABLED=true
-WATCHLIST_REFRESH_INTERVAL_SECONDS=300
-WATCHLIST_REFRESH_LIMIT=50
-```
-
 ### Backend Setup (completed)
 **Backend runs at:**  
 `http://localhost:8000`  
