@@ -44,10 +44,11 @@ export function PriceChart(props: { symbol: string }) {
 
       setState({ kind: "loading" });
 
-      // For newly searched symbols, hydrate last 6 months so chart has data.
+      // For newly searched symbols, hydrate last 3 months for faster response.
       if (hydratedSymbolRef.current !== symbol) {
         const preloadStart = new Date();
-        preloadStart.setDate(end.getDate() - 180);
+        // preloadStart.setDate(end.getDate() - 180); // old 6M preload
+        preloadStart.setDate(end.getDate() - 90);
         try {
           await api.loadStock({
             symbol,

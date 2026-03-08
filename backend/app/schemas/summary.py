@@ -8,6 +8,7 @@ class SymbolPnL(BaseModel):
     quantity: Decimal
     avg_cost: Decimal
     mark_price: Decimal
+    market_value: Decimal
     unrealized_pnl: Decimal
 
 
@@ -15,6 +16,7 @@ class AccountSummary(BaseModel):
     account_id: int
     cash: Decimal
     equity: Decimal
+    market_value: Decimal
     realized_pnl: Decimal
     unrealized_pnl: Decimal
     total_pnl: Decimal
