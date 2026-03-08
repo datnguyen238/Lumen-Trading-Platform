@@ -60,7 +60,10 @@ export type AccountSummary = {
   account_id: number;
   cash: string;
   equity: string;
+  market_value: string;
+  realized_pnl: string;
   unrealized_pnl: string;
+  total_pnl: string;
   positions: Record<
     string,
     {
@@ -68,6 +71,7 @@ export type AccountSummary = {
       quantity: string;
       avg_cost: string;
       mark_price: string;
+      market_value: string;
       unrealized_pnl: string;
     }
   >;

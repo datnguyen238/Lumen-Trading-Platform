@@ -291,38 +291,46 @@ export default function MarketsPage() {
           </Tabs>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Symbol</TableHead>
-                  <TableHead>Group</TableHead>
-                  <TableHead className="text-right">Last</TableHead>
-                  <TableHead className="text-right">Time</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {boardRows.map((r) => (
-                  <TableRow key={r.symbol} className="odd:bg-muted/30 hover:bg-accent/50">
-                    <TableCell className="font-medium">
-                      <Link href={`/asset/${encodeURIComponent(r.symbol)}`} className="hover:underline">
-                        {displaySymbol(r.symbol)}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{r.group}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatUsd(r.close)}</TableCell>
-                    <TableCell className="text-right text-muted-foreground tabular-nums">{r.timestamp}</TableCell>
-                  </TableRow>
-                ))}
-                {state.kind === "ready" && boardRows.length === 0 && (
+          <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
+            <div>
+              Showing <span className="font-medium text-foreground">{boardRows.length}</span> symbols
+            </div>
+            <div className="hidden md:block">Tip: click a ticker to open the asset page</div>
+          </div>
+          <div className="overflow-hidden rounded-xl border bg-muted/10">
+            <div className="max-h-[460px] overflow-auto">
+              <Table className="min-w-[720px]">
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={4} className="text-sm text-muted-foreground">
-                      No symbols match the current filter.
-                    </TableCell>
+                    <TableHead className="sticky top-0 z-10 bg-background/95 backdrop-blur">Symbol</TableHead>
+                    <TableHead className="sticky top-0 z-10 bg-background/95 backdrop-blur">Group</TableHead>
+                    <TableHead className="sticky top-0 z-10 bg-background/95 text-right backdrop-blur">Last</TableHead>
+                    <TableHead className="sticky top-0 z-10 bg-background/95 text-right backdrop-blur">Time</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {boardRows.map((r) => (
+                    <TableRow key={r.symbol} className="odd:bg-muted/25 hover:bg-accent/40">
+                      <TableCell className="py-2.5 font-medium">
+                        <Link href={`/asset/${encodeURIComponent(r.symbol)}`} className="hover:underline">
+                          {displaySymbol(r.symbol)}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="py-2.5 text-muted-foreground">{r.group}</TableCell>
+                      <TableCell className="py-2.5 text-right tabular-nums">{formatUsd(r.close)}</TableCell>
+                      <TableCell className="py-2.5 text-right text-muted-foreground tabular-nums">{r.timestamp}</TableCell>
+                    </TableRow>
+                  ))}
+                  {state.kind === "ready" && boardRows.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-sm text-muted-foreground">
+                        No symbols match the current filter.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         </CardContent>
       </Card>

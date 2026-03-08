@@ -34,9 +34,18 @@ from app.services.price_refresh import _upsert_bar, refresh_watchlist_db
 
 router = APIRouter()
 
-MAX_LIVE_BULK = 5
 _LIVE_CACHE_LOCK = threading.Lock()
 _LIVE_CACHE: dict[str, tuple[float, dict]] = {}
+_HISTORY_CACHE_LOCK = threading.Lock()
+_HISTORY_CACHE: dict[tuple[str, str, str], tuple[float, list[dict]]] = {}
+
+
+def _clear_history_cache_for_symbol(symbol: str) -> None:
+    symbol_norm = str(symbol).strip().upper()
+    with _HISTORY_CACHE_LOCK:
+        stale_keys = [k for k in _HISTORY_CACHE.keys() if k[0] == symbol_norm]
+        for key in stale_keys:
+            _HISTORY_CACHE.pop(key, None)
 
 
 def _get_live_item(symbol: str, force_refresh: bool = False) -> dict | None:
@@ -60,7 +69,8 @@ def _get_live_item(symbol: str, force_refresh: bool = False) -> dict | None:
 
 def _fetch_bulk_latest_bars(symbols: list[str]) -> list[dict]:
     out = []
-    for s in symbols[:MAX_LIVE_BULK]:
+    max_live_bulk = max(1, int(settings.live_bulk_limit))
+    for s in symbols[:max_live_bulk]:
         s_norm = s.strip().upper()
         item = _get_live_item(s_norm)
         if not item:
@@ -85,6 +95,7 @@ def load_stock(req: LoadStockRequest, db: Session = Depends(get_db)):
             end=req.end,
             interval=req.interval,
         )
+        _clear_history_cache_for_symbol(req.symbol)
         return {"message": f"Loaded {count} bars for {req.symbol} (yfinance)"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Stock load failed: {type(e).__name__}: {e}")
@@ -132,6 +143,7 @@ def refresh(symbol: str, db: Session = Depends(get_db)):
             )
             db.commit()
             db.refresh(row)
+            _clear_history_cache_for_symbol(s_norm)
             return row
         except ValueError:
             db.rollback()
@@ -150,25 +162,52 @@ def refresh(symbol: str, db: Session = Depends(get_db)):
 
 @router.get("/history", response_model=list[PriceBarRead])
 def history(symbol: str, start: date, end: date, db: Session = Depends(get_db)):
+    symbol_norm = str(symbol).strip().upper()
+    start_key = start.isoformat()
+    end_key = end.isoformat()
+    cache_key = (symbol_norm, start_key, end_key)
+    now = time.time()
+    history_ttl = max(1, int(settings.history_cache_ttl_seconds))
+    with _HISTORY_CACHE_LOCK:
+        cached = _HISTORY_CACHE.get(cache_key)
+        if cached and (now - cached[0]) <= history_ttl:
+            return cached[1]
+
     start_ts = datetime.combine(start, datetime.min.time())
     end_ts = datetime.combine(end, datetime.max.time())
 
     rows = (
         db.query(PriceBar)
-        .filter(PriceBar.symbol == symbol, PriceBar.timestamp >= start_ts, PriceBar.timestamp <= end_ts)
+        .filter(PriceBar.symbol == symbol_norm, PriceBar.timestamp >= start_ts, PriceBar.timestamp <= end_ts)
         .order_by(PriceBar.timestamp.asc())
         .all()
     )
     if not rows:
         raise HTTPException(status_code=404, detail="No data for symbol/date range.")
-    return rows
+    payload = [
+        {
+            "id": row.id,
+            "symbol": row.symbol,
+            "timestamp": row.timestamp,
+            "open": row.open,
+            "high": row.high,
+            "low": row.low,
+            "close": row.close,
+            "volume": row.volume,
+        }
+        for row in rows
+    ]
+    with _HISTORY_CACHE_LOCK:
+        _HISTORY_CACHE[cache_key] = (now, payload)
+    return payload
 
 
 @router.post("/latest/bulk")
 def latest_bulk(symbols: list[str], db: Session = Depends(get_db)):
     # 1) Try yfinance first (latest bar)
     live_map = {}
-    for s in symbols[:MAX_LIVE_BULK]:
+    max_live_bulk = max(1, int(settings.live_bulk_limit))
+    for s in symbols[:max_live_bulk]:
         s_norm = s.strip().upper()
         item = _get_live_item(s_norm)
         if item:
@@ -226,6 +265,8 @@ def latest_bulk(symbols: list[str], db: Session = Depends(get_db)):
 
     if touched:
         db.commit()
+        for row in touched:
+            _clear_history_cache_for_symbol(row.symbol)
 
     return out
 

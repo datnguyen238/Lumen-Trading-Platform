@@ -54,6 +54,7 @@ def account_summary(account_id: int, db: Session = Depends(get_db)):
     cash = Decimal(acc.cash_balance)
     realized_total = _compute_realized_pnl(db, account_id)
     unrealized_total = Decimal("0")
+    market_value_total = Decimal("0")
     out_positions = {}
 
     for p in positions:
@@ -63,7 +64,9 @@ def account_summary(account_id: int, db: Session = Depends(get_db)):
 
         avg_cost = Decimal(p.average_price)
         mark = get_mark_price(db, p.symbol)
+        market_value = mark * qty
         unrealized = (mark - avg_cost) * qty
+        market_value_total += market_value
         unrealized_total += unrealized
 
         out_positions[p.symbol] = SymbolPnL(
@@ -71,15 +74,18 @@ def account_summary(account_id: int, db: Session = Depends(get_db)):
             quantity=qty,
             avg_cost=avg_cost,
             mark_price=mark,
+            market_value=market_value,
             unrealized_pnl=unrealized,
         )
 
-    equity = cash + unrealized_total
+    # Net liquidation value: cash + current marked value of open positions
+    equity = cash + market_value_total
 
     return AccountSummary(
         account_id=account_id,
         cash=cash,
         equity=equity,
+        market_value=market_value_total,
         realized_pnl=realized_total,
         unrealized_pnl=unrealized_total,
         total_pnl=realized_total + unrealized_total,
