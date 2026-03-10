@@ -38,7 +38,7 @@ export default function DashboardPage() {
 
         // Keep dashboard valuations current by refreshing held symbols before summary.
         if (symbolsToRefresh.length > 0) {
-          await api.latestBulk(symbolsToRefresh);
+          await api.latestBulk(symbolsToRefresh, { force: true });
         }
 
         const s = await api.getSummary(accountId);

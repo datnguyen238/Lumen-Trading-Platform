@@ -92,8 +92,6 @@ Lumen-Trading-Platform/
 ### Backend Setup
 ```bash
 cd backend
-cp .env.example .env
-docker compose up -d
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt

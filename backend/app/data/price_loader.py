@@ -137,28 +137,40 @@ def fetch_latest_stock_bar_yfinance(symbol: str) -> dict | None:
             return cached_item
 
     yf_symbol = _to_yfinance_symbol(symbol)
-    end = date.today()
-    start = end - timedelta(days=7)
 
+    # Prefer most-recent intraday bar when available for better UX on quote refresh.
+    # Falls back to daily bar for symbols/markets with limited intraday access.
+    latest = None
     try:
-        df = yf.download(
-            yf_symbol,
-            start=start,
-            end=end + timedelta(days=1),
-            interval="1d",
-            progress=False,
-            auto_adjust=False,
-        )
+        intraday = yf.Ticker(yf_symbol).history(period="2d", interval="1m", auto_adjust=False, prepost=False)
+        if not intraday.empty:
+            latest = intraday.iloc[-1]
     except Exception:
-        return cached[1] if cached else None
+        latest = None
 
-    if df.empty:
-        return cached[1] if cached else None
+    if latest is None:
+        end = date.today()
+        start = end - timedelta(days=7)
+        try:
+            df = yf.download(
+                yf_symbol,
+                start=start,
+                end=end + timedelta(days=1),
+                interval="1d",
+                progress=False,
+                auto_adjust=False,
+            )
+        except Exception:
+            return cached[1] if cached else None
 
-    if hasattr(df.columns, "levels"):
-        df.columns = df.columns.get_level_values(0)
+        if df.empty:
+            return cached[1] if cached else None
 
-    latest = df.iloc[-1]
+        if hasattr(df.columns, "levels"):
+            df.columns = df.columns.get_level_values(0)
+
+        latest = df.iloc[-1]
+
     ts = latest.name.to_pydatetime() if hasattr(latest.name, "to_pydatetime") else latest.name
     if getattr(ts, "tzinfo", None) is not None:
         ts = ts.replace(tzinfo=None)
