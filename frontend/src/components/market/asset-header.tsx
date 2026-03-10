@@ -18,7 +18,9 @@ export function AssetHeader(props: {
       <div>
         <div className="flex items-center gap-2">
           <div className="text-xl font-semibold tracking-tight">{display}</div>
-          <Badge variant="secondary">{props.err ? "Error" : props.latest ? "Live" : props.loading ? "Loading" : "—"}</Badge>
+          <Badge variant="secondary">
+            {props.err ? "Error" : props.latest ? "Synced" : props.loading ? "Loading" : "—"}
+          </Badge>
         </div>
 
         <div className="mt-1 flex items-baseline gap-3">
@@ -26,7 +28,7 @@ export function AssetHeader(props: {
             {close !== null && Number.isFinite(close) ? `$${close.toFixed(2)}` : "$—"}
           </div>
           <div className="text-sm text-muted-foreground">
-            {props.latest ? `as of ${formatTimestamp(props.latest.timestamp)}` : ""}
+            {props.latest ? `last bar ${formatTimestamp(props.latest.timestamp)}` : ""}
           </div>
         </div>
 
@@ -35,7 +37,7 @@ export function AssetHeader(props: {
 
       <div className="text-right">
         <div className="text-xs text-muted-foreground">Source</div>
-        <div className="text-sm font-medium">/prices/latest</div>
+        <div className="text-sm font-medium">/prices/refresh</div>
       </div>
     </div>
   );

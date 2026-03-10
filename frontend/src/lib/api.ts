@@ -130,8 +130,10 @@ export const api = {
 
   // Bulk latest prices
   // Bulk latest prices (backend expects a raw JSON array: ["AAPL","MSFT"])
-  latestBulk: (symbols: string[]) =>
-    request<BulkLatestItem[]>("/prices/latest/bulk", {
+  latestBulk: (symbols: string[], options?: { force?: boolean }) =>
+    request<BulkLatestItem[]>(
+      `/prices/latest/bulk${options?.force ? "?force=true" : ""}`,
+      {
       method: "POST",
       body: JSON.stringify(symbols),
     }),

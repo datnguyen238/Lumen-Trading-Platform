@@ -203,13 +203,13 @@ def history(symbol: str, start: date, end: date, db: Session = Depends(get_db)):
 
 
 @router.post("/latest/bulk")
-def latest_bulk(symbols: list[str], db: Session = Depends(get_db)):
+def latest_bulk(symbols: list[str], force: bool = False, db: Session = Depends(get_db)):
     # 1) Try yfinance first (latest bar)
     live_map = {}
     max_live_bulk = max(1, int(settings.live_bulk_limit))
     for s in symbols[:max_live_bulk]:
         s_norm = s.strip().upper()
-        item = _get_live_item(s_norm)
+        item = _get_live_item(s_norm, force_refresh=force)
         if item:
             live_map[s_norm] = item
 
