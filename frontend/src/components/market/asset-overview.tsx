@@ -26,7 +26,7 @@ type UiState =
     }
   | { kind: "error"; message: string };
 
-export function AssetOverview(props: { symbol: string }) {
+export function AssetOverview(props: { symbol: string; latestOverride?: PriceBarRead | null; refreshNonce?: number }) {
   const symbol = props.symbol.toUpperCase();
   const { accountId } = useSession();
   const [tab, setTab] = useState<ActivityTab>("orders");
@@ -39,7 +39,7 @@ export function AssetOverview(props: { symbol: string }) {
     async function run() {
       setState({ kind: "loading" });
       try {
-        const latest = await api.getLatestPrice(symbol).catch(() => null);
+        const latest = props.latestOverride ?? null;
 
         let position: PositionRead | null = null;
         let orders: OrderRead[] = [];
@@ -103,7 +103,7 @@ export function AssetOverview(props: { symbol: string }) {
     return () => {
       cancelled = true;
     };
-  }, [symbol, accountId]);
+  }, [symbol, accountId, props.latestOverride?.timestamp, props.refreshNonce]);
 
   const stats = useMemo(() => {
     if (state.kind !== "ready") return null;

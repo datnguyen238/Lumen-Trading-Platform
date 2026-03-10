@@ -17,28 +17,50 @@ export default function DashboardPage() {
   const [sparklines, setSparklines] = useState<Record<string, number[]>>({});
 
   useEffect(() => {
+    let cancelled = false;
     setErr(null);
     setSummary(null);
     setPositions(null);
 
     if (!accountId) return;
 
-    (async () => {
+    const loadDashboard = async () => {
       try {
-        // Summary might not exist yet; positions should.
-        const [pos] = await Promise.all([api.getPositions(accountId)]);
-        setPositions(pos);
+        const pos = await api.getPositions(accountId);
+        const symbolsToRefresh = Array.from(
+          new Set(
+            pos
+              .filter((p) => Number(p.quantity) !== 0)
+              .map((p) => String(p.symbol).trim().toUpperCase())
+              .filter(Boolean)
+          )
+        );
 
-        try {
-          const s = await api.getSummary(accountId);
-          setSummary(s);
-        } catch {
-          // ignore if not implemented yet
+        // Keep dashboard valuations current by refreshing held symbols before summary.
+        if (symbolsToRefresh.length > 0) {
+          await api.latestBulk(symbolsToRefresh);
         }
+
+        const s = await api.getSummary(accountId);
+
+        if (cancelled) return;
+        setPositions(pos);
+        setSummary(s);
       } catch (e) {
+        if (cancelled) return;
         setErr(e instanceof Error ? e.message : "Failed to load dashboard");
       }
-    })();
+    };
+
+    void loadDashboard();
+    const t = window.setInterval(() => {
+      void loadDashboard();
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
   }, [accountId]);
 
   const metrics = useMemo(() => {
@@ -169,7 +191,9 @@ export default function DashboardPage() {
 
             {visiblePositions && visiblePositions.length > 0 && (
               <div className="h-full max-h-full space-y-1.5 overflow-y-auto pr-1">
-                {visiblePositions.map((p) => (
+                {visiblePositions.map((p) => {
+                  const summaryPos = findSummaryPosition(summary, p.symbol);
+                  return (
                   <div key={p.id} className="grid gap-1 rounded-md border px-3 py-1.5 md:grid-cols-[1.2fr,160px]">
                     <div className="space-y-0.5 pt-1">
                       <div className="flex items-center gap-2">
@@ -185,9 +209,9 @@ export default function DashboardPage() {
                       </div>
                       <div className="text-[11px] text-muted-foreground">
                         Avg {formatMoney(p.average_price)}
-                        {summary?.positions?.[p.symbol]
-                          ? ` • Mark ${formatMoney(String(summary.positions[p.symbol].mark_price))}`
-                          : ""}
+                          {summaryPos
+                            ? ` • Mark ${formatMoney(String(summaryPos.mark_price))}`
+                            : ""}
                       </div>
                     </div>
 
@@ -208,7 +232,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   </div>
-                ))}
+                )})}
               </div>
             )}
           </CardContent>
@@ -269,9 +293,18 @@ function toYmd(d: Date) {
 }
 
 function positionUnrealized(summary: AccountSummary | null, symbol: string) {
-  const raw = summary?.positions?.[symbol]?.unrealized_pnl;
+  const raw = findSummaryPosition(summary, symbol)?.unrealized_pnl;
   const n = Number(raw ?? 0);
   return Number.isFinite(n) ? n : 0;
+}
+
+function findSummaryPosition(summary: AccountSummary | null, symbol: string) {
+  if (!summary?.positions) return null;
+  const target = String(symbol).trim().toUpperCase();
+  const exact = summary.positions[target];
+  if (exact) return exact;
+  const key = Object.keys(summary.positions).find((k) => k.trim().toUpperCase() === target);
+  return key ? summary.positions[key] : null;
 }
 
 function PositionSparkline(props: { values: number[]; positive: boolean }) {

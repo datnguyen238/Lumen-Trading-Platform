@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 
 type Side = "BUY" | "SELL";
 
-export function OrderTicket(props: { symbol: string }) {
+export function OrderTicket(props: { symbol: string; onOrderPlaced?: () => void }) {
   const { accountId } = useSession();
   const symbol = props.symbol.toUpperCase();
 
@@ -40,6 +40,7 @@ export function OrderTicket(props: { symbol: string }) {
       });
 
       setMsg(`Order placed: ${order.side} ${order.symbol} x ${order.quantity}`);
+      props.onOrderPlaced?.();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Order failed");
     } finally {
