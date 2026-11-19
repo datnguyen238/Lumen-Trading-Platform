@@ -69,7 +69,7 @@ Daemons consume provisioned-memory quota while running. At the currently documen
 
 Deploy Production from Vercel. Then:
 
-Run `python scripts/check_public_routes.py https://YOUR_DOMAIN` from `backend/` to verify the homepage redirect, dashboard, company logo, API health, and signed-out session response against the actual deployment. A successful build alone does not verify public routing.
+Run `python scripts/check_public_routes.py https://YOUR_DOMAIN` from `backend/` to verify the homepage redirect, dashboard, standalone login/signup pages, company logo, API health, and signed-out session response against the actual deployment. A successful build alone does not verify public routing.
 
 1. Open `https://YOUR_DOMAIN/api/health`. Expect `status: "ok"`, database connected, and paper trading in `external` mode. A `schema_setup_required` response means bootstrap needs to run against that environment's database.
 2. Inspect the `paper-trading` daemon in Vercel. Its probe must be healthy and its logs should report completed paper cycles. API `external` mode indicates configuration, not a live report from the separate daemon.

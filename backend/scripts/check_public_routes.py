@@ -19,6 +19,8 @@ def main():
             ('/', lambda r: r.status_code in (307, 308) and
              urljoin(base, r.headers.get('Location', '')) == urljoin(base, 'dashboard')),
             ('/dashboard', lambda r: r.status_code == 200 and 'Lumen' in r.text),
+            ('/login', lambda r: r.status_code == 200 and 'l-auth-screen' in r.text and 'l-rail' not in r.text),
+            ('/signup', lambda r: r.status_code == 200 and 'l-auth-screen' in r.text and 'l-rail' not in r.text),
             ('/logos/AAPL.png', lambda r: r.status_code == 200 and r.headers.get('Content-Type', '').startswith('image/')),
             ('/api/health', lambda r: r.status_code == 200 and r.json().get('status') == 'ok'),
             ('/api/auth/me', lambda r: r.status_code == 401),

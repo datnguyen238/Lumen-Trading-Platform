@@ -173,3 +173,119 @@ html{font-size:16px;scroll-behavior:smooth}body{margin:0;font-family:var(--font-
 .l-empty h2 + .l-button{margin-top:20px}
 
 .l-portfolio-grid.l-no-holdings{grid-template-columns:1fr}
+
+/* Authentication has its own canvas, outside the investing workspace. */
+.l-auth-screen {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+.l-auth-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 30px 42px;
+}
+.l-auth-header .l-brand {
+  padding: 0;
+  color: var(--l-ink);
+  font-size: 1.5rem;
+}
+.l-auth-header .l-brand-mark svg { stroke: currentColor; }
+.l-auth-market-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  color: var(--muted-foreground);
+  font-size: .8125rem;
+  text-decoration: none;
+}
+.l-auth-market-link:hover { color: var(--foreground); }
+.l-auth-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 44px 24px 80px;
+  outline: none;
+}
+.l-auth-form { width: min(100%, 380px); }
+.l-auth-form .l-setup-form {
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+}
+.l-auth-form h1 {
+  font-size: 2rem;
+  font-weight: 550;
+  letter-spacing: -.035em;
+  line-height: 1.2;
+  margin-bottom: 34px;
+}
+.l-auth-form .l-form { gap: 23px; }
+.l-auth-form .l-form label { gap: 9px; font-size: .8125rem; }
+.l-auth-form .l-form input {
+  min-height: 52px;
+  padding-inline: 15px;
+  border-color: var(--input);
+  background: var(--card);
+  font-size: 1rem;
+  caret-color: var(--l-ink);
+}
+.l-auth-form input::placeholder { color: var(--muted-foreground); }
+.l-auth-form .l-password-field button { right: 6px; width: 40px; height: 40px; }
+.l-auth-form .l-form small { font-size: .75rem; }
+.l-auth-form .l-form > .l-button {
+  min-height: 52px;
+  margin-top: 5px;
+  font-size: .875rem;
+}
+.l-auth-form .l-auth-switch {
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 30px;
+  font-size: .8125rem;
+}
+.l-auth-form .l-auth-switch a {
+  min-height: 44px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-color: var(--input);
+}
+.l-auth-form .l-auth-switch a:hover { text-decoration-color: currentColor; }
+.l-auth-form .l-error { align-items: flex-start; line-height: 1.6; }
+.l-auth-form .l-error p { min-width: 0; }
+.l-auth-footer {
+  padding: 24px;
+  color: var(--muted-foreground);
+  text-align: center;
+  font-size: .6875rem;
+}
+.l-auth-wait {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted-foreground);
+  font-size: .8125rem;
+}
+.l-auth-progress {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--border);
+  border-top-color: var(--l-ink);
+  border-radius: 50%;
+  animation: l-spin 1s linear infinite;
+}
+@media (max-width: 760px) {
+  .l-auth-header { padding: 18px 24px; gap: 16px; }
+  .l-auth-header .l-brand { font-size: 1.375rem; gap: 7px; }
+  .l-auth-market-link { font-size: .75rem; }
+  .l-auth-main { padding: 40px 28px 56px; }
+  .l-auth-form h1 { font-size: 1.75rem; margin-bottom: 30px; }
+  .l-auth-footer { padding: 18px 24px 24px; }
+}
+@media (max-height: 700px) {
+  .l-auth-main { align-items: flex-start; padding-block: 28px 40px; }
+}
