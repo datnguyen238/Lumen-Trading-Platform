@@ -1,19 +1,18 @@
+from app.services.auth import current_user, owned_account
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.db.session import get_db
-from app.models.models import Account, Order
+from app.models.models import Account, Order, User
 from app.schemas.orders import OrderRead
 
 router = APIRouter()
 
 
 @router.get("/accounts/{account_id}/orders", response_model=list[OrderRead])
-def get_orders(account_id: int, db: Session = Depends(get_db)):
-    acc = db.query(Account).filter(Account.id == account_id).first()
-    if not acc:
-        raise HTTPException(status_code=404, detail="Account not found")
+def get_orders(account_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    acc = owned_account(account_id, db, user)
 
     rows = (
         db.query(Order)

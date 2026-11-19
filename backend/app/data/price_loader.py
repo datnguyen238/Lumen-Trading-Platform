@@ -1,7 +1,9 @@
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
 import math
+from pathlib import Path
+import tempfile
 
 import requests
 import yfinance as yf
@@ -9,6 +11,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.models import PriceBar
+from app.core.config import settings
+
+
+if settings.vercel:
+    # Hosted functions can only persist temporary cache files under /tmp.
+    yf.set_tz_cache_location(str(Path(tempfile.gettempdir()) / "lumen-yfinance"))
 
 
 BINANCE_BASE_URL = "https://api.binance.com"
@@ -82,7 +90,7 @@ def load_stock_history(db: Session, symbol: str, start: date, end: date, interva
         ts_raw = row.get("Datetime") or row.get("Date")
         ts = ts_raw.to_pydatetime() if hasattr(ts_raw, "to_pydatetime") else ts_raw
         if getattr(ts, "tzinfo", None) is not None:
-            ts = ts.replace(tzinfo=None)
+            ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
 
         o, h, l, c = row.get("Open"), row.get("High"), row.get("Low"), row.get("Close")
         if any(v is None for v in (o, h, l, c)):
@@ -94,30 +102,11 @@ def load_stock_history(db: Session, symbol: str, start: date, end: date, interva
         close_ = Decimal(str(c))
         volume_ = _maybe_decimal(row.get("Volume"))
 
-        existing = (
-            db.query(PriceBar)
-            .filter(PriceBar.symbol == symbol, PriceBar.timestamp == ts)
-            .first()
-        )
-
-        if existing:
-            existing.open = open_
-            existing.high = high_
-            existing.low = low_
-            existing.close = close_
-            existing.volume = volume_
-        else:
-            db.add(
-                PriceBar(
-                    symbol=symbol,
-                    timestamp=ts,
-                    open=open_,
-                    high=high_,
-                    low=low_,
-                    close=close_,
-                    volume=volume_,
-                )
-            )
+        from app.services.price_refresh import _upsert_bar
+        try:
+            _upsert_bar(db, symbol, ts, open_, high_, low_, close_, volume_)
+        except ValueError:
+            continue
 
         inserted_or_updated += 1
 
@@ -125,13 +114,13 @@ def load_stock_history(db: Session, symbol: str, start: date, end: date, interva
     return inserted_or_updated
 
 
-def fetch_latest_stock_bar_yfinance(symbol: str) -> dict | None:
+def fetch_latest_stock_bar_yfinance(symbol: str, force_refresh: bool = False) -> dict | None:
     symbol = str(symbol).strip().upper()
     if not symbol:
         return None
 
     cached = _STOCK_CACHE.get(symbol)
-    if cached:
+    if cached and not force_refresh:
         cached_at, cached_item = cached
         if (datetime.utcnow() - cached_at).total_seconds() < _STOCK_TTL_SECONDS:
             return cached_item
@@ -142,7 +131,7 @@ def fetch_latest_stock_bar_yfinance(symbol: str) -> dict | None:
     # Falls back to daily bar for symbols/markets with limited intraday access.
     latest = None
     try:
-        intraday = yf.Ticker(yf_symbol).history(period="2d", interval="1m", auto_adjust=False, prepost=False)
+        intraday = yf.Ticker(yf_symbol).history(period="2d", interval="1m", auto_adjust=False, prepost=False, timeout=10)
         if not intraday.empty:
             latest = intraday.iloc[-1]
     except Exception:
@@ -159,6 +148,7 @@ def fetch_latest_stock_bar_yfinance(symbol: str) -> dict | None:
                 interval="1d",
                 progress=False,
                 auto_adjust=False,
+                timeout=10,
             )
         except Exception:
             return cached[1] if cached else None
@@ -173,7 +163,7 @@ def fetch_latest_stock_bar_yfinance(symbol: str) -> dict | None:
 
     ts = latest.name.to_pydatetime() if hasattr(latest.name, "to_pydatetime") else latest.name
     if getattr(ts, "tzinfo", None) is not None:
-        ts = ts.replace(tzinfo=None)
+        ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
 
     o = latest.get("Open")
     h = latest.get("High")

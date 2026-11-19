@@ -10,11 +10,15 @@ class SymbolPnL(BaseModel):
     mark_price: Decimal
     market_value: Decimal
     unrealized_pnl: Decimal
+    available_quantity: Decimal = Decimal("0")
+    reserved_quantity: Decimal = Decimal("0")
 
 
 class AccountSummary(BaseModel):
     account_id: int
     cash: Decimal
+    reserved_cash: Decimal = Decimal("0")
+    available_cash: Decimal = Decimal("0")
     equity: Decimal
     market_value: Decimal
     realized_pnl: Decimal

@@ -1,11 +1,11 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from decimal import Decimal
 
 
 class AccountCreate(BaseModel):
     user_id: int
-    name: str = "Main"
+    name: str = Field(default="My portfolio", min_length=1, max_length=80)
 
 
 class AccountRead(BaseModel):

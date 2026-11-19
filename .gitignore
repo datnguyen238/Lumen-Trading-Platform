@@ -14,6 +14,10 @@ __pycache__/
 venv/
 env/
 .env
+.pytest_cache/
+*.db
+*.sqlite
+*.sqlite3
 
 # OS
 .DS_Store
@@ -21,3 +25,13 @@ env/
 # IDE
 .vscode/
 .idea/
+
+# Deployment metadata and safe environment templates
+.vercel/
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+
+# Local Impeccable artifacts
+/.impeccable/
+/impeccable/

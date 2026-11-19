@@ -1,9 +1,9 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from app.api.summary import account_summary
 from app.models.enums import OrderSide, OrderType
-from app.models.models import PriceBar, Trade
+from app.models.models import PriceBar, Trade, Order
 from app.schemas.orders import OrderCreate
 from app.services.execution import execute_market_order
 
@@ -35,7 +35,7 @@ def test_buy_buy_sell_realized_and_unrealized_pnl(db_session, account_with_price
     db_session.add(
         PriceBar(
             symbol="AAPL",
-            timestamp=datetime(2026, 2, 8, 0, 0, 0),
+            timestamp=datetime.utcnow(),
             open=130,
             high=130,
             low=130,
@@ -56,7 +56,7 @@ def test_buy_buy_sell_realized_and_unrealized_pnl(db_session, account_with_price
         ),
     )
 
-    summary = account_summary(account_with_price.id, db_session)
+    summary = account_summary(account_with_price.id, db_session, account_with_price.user)
     pos = summary.positions["AAPL"]
 
     # Realized: sold 1 at 130, avg cost 100 => +30
@@ -70,6 +70,11 @@ def test_buy_buy_sell_realized_and_unrealized_pnl(db_session, account_with_price
 
 
 def test_summary_handles_manual_trade_ordering(db_session, account_with_price):
+    # Parent orders are required by PostgreSQL foreign keys, including imported legacy fills.
+    for order_id, side, qty, price in [(1, OrderSide.BUY, 2, 50), (2, OrderSide.SELL, 1, 70)]:
+        db_session.add(Order(id=order_id, account_id=account_with_price.id, symbol="MSFT", side=side,
+            order_type=OrderType.MARKET, quantity=qty, filled_quantity=qty, avg_fill_price=price))
+    db_session.flush()
     db_session.add(
         Trade(
             account_id=account_with_price.id,
@@ -92,5 +97,5 @@ def test_summary_handles_manual_trade_ordering(db_session, account_with_price):
     )
     db_session.commit()
 
-    summary = account_summary(account_with_price.id, db_session)
+    summary = account_summary(account_with_price.id, db_session, account_with_price.user)
     assert summary.realized_pnl == Decimal("20")

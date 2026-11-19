@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
@@ -47,6 +47,7 @@ def apply_fill(db: Session, account: Account, symbol: str, side: OrderSide, qty:
         if Decimal(pos.quantity) == 0:
             pos.average_price = Decimal("0")
 
+    account.cash_balance = Decimal(account.cash_balance).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
     if Decimal(account.cash_balance) < 0:
         raise ValueError("Insufficient cash balance")
 

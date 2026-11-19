@@ -13,6 +13,9 @@ class PriceBarRead(BaseModel):
     low: Decimal
     close: Decimal
     volume: Optional[Decimal] = None
+    change: Decimal | None = None
+    change_percent: Decimal | None = None
+    previous_timestamp: datetime | None = None
 
     model_config = {"from_attributes": True}
 

@@ -26,30 +26,25 @@ def _upsert_bar(
         raise ValueError(f"Invalid OHLC data for {symbol}: {e}")
     v = Decimal(str(volume_v)) if volume_v is not None else None
 
-    existing = (
-        db.query(PriceBar)
-        .filter(PriceBar.symbol == symbol, PriceBar.timestamp == ts)
-        .first()
-    )
-    if existing:
-        existing.open = o
-        existing.high = h
-        existing.low = l
-        existing.close = c
-        existing.volume = v
-        return existing
-
-    row = PriceBar(
-        symbol=symbol,
-        timestamp=ts,
-        open=o,
-        high=h,
-        low=l,
-        close=c,
-        volume=v,
-    )
-    db.add(row)
-    return row
+    if not all(value.is_finite() and value > 0 for value in (o, h, l, c)):
+        raise ValueError(f"Invalid OHLC data for {symbol}")
+    if v is not None and (not v.is_finite() or v < 0):
+        v = None
+    # Database-native upserts also handle two quote refreshes arriving together.
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert
+    elif dialect == "sqlite":
+        from sqlalchemy.dialects.sqlite import insert
+    else:
+        raise ValueError("Unsupported price-storage database")
+    values = dict(symbol=symbol, timestamp=ts, open=o, high=h, low=l, close=c, volume=v)
+    statement = insert(PriceBar).values(**values)
+    statement = statement.on_conflict_do_update(
+        index_elements=["symbol", "timestamp"],
+        set_={name: getattr(statement.excluded, name) for name in ("open", "high", "low", "close", "volume")},
+    ).returning(PriceBar)
+    return db.execute(statement, execution_options={"populate_existing": True}).scalar_one()
 
 
 def refresh_watchlist_db(db: Session, limit: int = 50) -> tuple[int, int, int]:

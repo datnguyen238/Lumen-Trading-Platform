@@ -1,4 +1,7 @@
+from app.api.watchlist import router as watchlist_router
+from app.api.overview import router as overview_router
 from fastapi import APIRouter
+from app.api.auth import router as auth_router
 from app.api.health import router as health_router
 from app.api.users import router as users_router
 from app.api.accounts import router as accounts_router
@@ -9,11 +12,13 @@ from app.api.account_orders import router as account_orders_router
 from app.api.summary import router as summary_router
 from app.api.symbols import router as symbols_router
 from app.api.seed import router as seed_router
-from app.api.admin import router as admin_router
 
 
 
 api_router = APIRouter()
+api_router.include_router(watchlist_router)
+api_router.include_router(overview_router)
+api_router.include_router(auth_router)
 api_router.include_router(health_router)
 api_router.include_router(users_router, prefix="/users", tags=["users"])
 api_router.include_router(accounts_router, prefix="/accounts", tags=["accounts"])
@@ -24,6 +29,6 @@ api_router.include_router(account_orders_router, tags=["accounts"])
 api_router.include_router(summary_router, tags=["accounts"])
 api_router.include_router(symbols_router, tags=["symbols"])
 api_router.include_router(seed_router, tags=["seed"])
-api_router.include_router(admin_router, tags=["admin"])
+# Destructive database administration is deliberately not exposed over HTTP.
 
 

@@ -1,3 +1,4 @@
+from app.services.auth import current_user, owned_account
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -9,10 +10,9 @@ router = APIRouter()
 
 
 @router.post("/", response_model=AccountRead)
-def create_account(account_in: AccountCreate, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == account_in.user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+def create_account(account_in: AccountCreate, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    if account_in.user_id != user.id:
+        raise HTTPException(403, "You can only create your own portfolio.")
 
     account = Account(user_id=account_in.user_id, name=account_in.name)
     db.add(account)
@@ -22,16 +22,12 @@ def create_account(account_in: AccountCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/{account_id}", response_model=AccountRead)
-def get_account(account_id: int, db: Session = Depends(get_db)):
-    acc = db.query(Account).filter(Account.id == account_id).first()
-    if not acc:
-        raise HTTPException(status_code=404, detail="Account not found")
+def get_account(account_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    acc = owned_account(account_id, db, user)
     return acc
 
 
 @router.get("/{account_id}/positions", response_model=list[PositionRead])
-def get_positions(account_id: int, db: Session = Depends(get_db)):
-    acc = db.query(Account).filter(Account.id == account_id).first()
-    if not acc:
-        raise HTTPException(status_code=404, detail="Account not found")
+def get_positions(account_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    acc = owned_account(account_id, db, user)
     return db.query(Position).filter(Position.account_id == account_id).all()

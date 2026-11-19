@@ -9,16 +9,9 @@ from app.services.execution import execute_market_order
 
 
 def test_rejects_non_positive_quantity(db_session, account_with_price):
-    order_in = OrderCreate(
-        account_id=account_with_price.id,
-        symbol="AAPL",
-        side=OrderSide.BUY,
-        order_type=OrderType.MARKET,
-        quantity=Decimal("0"),
-    )
-
-    with pytest.raises(ValueError, match="Quantity must be greater than 0"):
-        execute_market_order(db_session, order_in)
+    with pytest.raises(ValueError, match="greater than 0"):
+        OrderCreate(account_id=account_with_price.id, symbol="AAPL", side=OrderSide.BUY,
+                    quantity=Decimal("0"))
 
 
 def test_rejects_buy_when_insufficient_cash(db_session, account_with_price):

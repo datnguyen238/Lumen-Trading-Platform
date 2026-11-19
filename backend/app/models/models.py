@@ -78,6 +78,7 @@ class Order(Base):
 
     account: Mapped["Account"] = relationship(back_populates="orders")
     trades: Mapped[list["Trade"]] = relationship(back_populates="order", cascade="all, delete-orphan")
+    execution: Mapped["ExecutionDetail | None"] = relationship(uselist=False, cascade="all, delete-orphan")
 
 
 class Trade(Base):
@@ -122,3 +123,66 @@ class Symbol(Base):
     name: Mapped[str | None] = mapped_column(String, nullable=True)
     asset_type: Mapped[str] = mapped_column(String, nullable=False, default="stock")  # stock/index/crypto
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class UserCredential(Base):
+    __tablename__ = "user_credentials"
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    password_hash: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    csrf_token: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+
+
+class OrderReceipt(Base):
+    __tablename__ = "order_receipts"
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), primary_key=True)
+    request_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), nullable=False)
+
+
+class SavedAsset(Base):
+    __tablename__ = "saved_assets"
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(20), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class OrderPreview(Base):
+    __tablename__ = "order_previews"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), nullable=False, index=True)
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    side: Mapped[OrderSide] = mapped_column(Enum(OrderSide), nullable=False)
+    order_type: Mapped[OrderType] = mapped_column(Enum(OrderType), nullable=False)
+    quantity: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False)
+    notional: Mapped[float | None] = mapped_column(Numeric(18, 2), nullable=True)
+    limit_price: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    quoted_price: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False)
+    quote_timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id"), nullable=True)
+
+
+class ExecutionDetail(Base):
+    __tablename__ = "execution_details"
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), primary_key=True)
+    quote_timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    quote_price: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False)
+    cash_before: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False)
+    cash_after: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False)
+    fees: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False, default=0)
+    model: Mapped[str] = mapped_column(String, nullable=False, default="last_observed_price")
+
+
+class AuthRateBucket(Base):
+    __tablename__ = "auth_rate_buckets"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)

@@ -58,7 +58,7 @@ def _get_live_item(symbol: str, force_refresh: bool = False) -> dict | None:
             if cached and (now - cached[0]) <= ttl:
                 return cached[1]
 
-    item = fetch_latest_stock_bar_yfinance(symbol)
+    item = fetch_latest_stock_bar_yfinance(symbol, force_refresh=force_refresh)
     if not item:
         return None
 
@@ -109,17 +109,26 @@ def load_crypto(req: LoadCryptoRequest, db: Session = Depends(get_db)):
     return {"message": f"Loaded {count} bars for {req.symbol}"}
 
 
+def _with_change(db: Session, row: PriceBar):
+    day_start = datetime.combine(row.timestamp.date(), datetime.min.time())
+    previous = db.query(PriceBar).filter(PriceBar.symbol == row.symbol, PriceBar.timestamp < day_start).order_by(PriceBar.timestamp.desc()).first()
+    row.change = row.close - previous.close if previous and previous.close > 0 else None
+    row.change_percent = row.change / previous.close * 100 if row.change is not None else None
+    row.previous_timestamp = previous.timestamp if previous else None
+    return row
+
+
 @router.get("/latest", response_model=PriceBarRead)
 def latest(symbol: str, db: Session = Depends(get_db)):
     row = (
         db.query(PriceBar)
-        .filter(PriceBar.symbol == symbol)
+        .filter(PriceBar.symbol == symbol.strip().upper())
         .order_by(desc(PriceBar.timestamp))
         .first()
     )
     if not row:
         raise HTTPException(status_code=404, detail="No data for symbol. Load prices first.")
-    return row
+    return _with_change(db, row)
 
 
 @router.post("/refresh", response_model=PriceBarRead)
@@ -144,7 +153,7 @@ def refresh(symbol: str, db: Session = Depends(get_db)):
             db.commit()
             db.refresh(row)
             _clear_history_cache_for_symbol(s_norm)
-            return row
+            return _with_change(db, row)
         except ValueError:
             db.rollback()
 
@@ -157,7 +166,7 @@ def refresh(symbol: str, db: Session = Depends(get_db)):
     )
     if not row:
         raise HTTPException(status_code=404, detail="No data for symbol. Load prices first.")
-    return row
+    return _with_change(db, row)
 
 
 @router.get("/history", response_model=list[PriceBarRead])

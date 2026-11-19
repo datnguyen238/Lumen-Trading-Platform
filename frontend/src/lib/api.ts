@@ -1,4 +1,9 @@
 import type {
+  AuthRead,
+  AccountOverview,
+  PreviewRequest,
+  OrderPreview,
+  OrderRequest,
   AccountRead,
   AccountSummary,
   Health,
@@ -13,8 +18,9 @@ import type { BulkLatestItem, SymbolItem } from "@/lib/types";
 
 
 
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const BASE_URL = "/api";
+let csrfToken: string | null = null;
+export function setCsrfToken(value: string | null) { csrfToken = value; }
 
 export class ApiError extends Error {
   status: number;
@@ -29,9 +35,11 @@ export class ApiError extends Error {
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
+    credentials: "include",
     headers: {
       ...(options?.headers ?? {}),
       "Content-Type": "application/json",
+      ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
     },
     cache: "no-store",
   });
@@ -40,8 +48,13 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const body = text ? safeJsonParse(text) : null;
 
   if (!res.ok) {
+    if (res.status === 401 && !path.startsWith("/auth/")) window.dispatchEvent(new Event("lumen-auth-expired"));
     throw new ApiError(
-      `Request failed: ${res.status} ${res.statusText}`,
+      typeof body === "object" && body && "detail" in body && typeof body.detail === "string"
+        ? body.detail
+        : typeof body === "object" && body && "detail" in body && Array.isArray(body.detail)
+          ? body.detail.map((issue: { loc?: string[]; msg?: string }) => `${issue.loc?.at(-1)?.replaceAll("_", " ") || "Input"}: ${issue.msg || "Check this value"}`).join(". ")
+          : `The request could not be completed (${res.status}). Please try again.`,
       res.status,
       body
     );
@@ -58,6 +71,18 @@ function safeJsonParse(text: string): unknown {
 }
 
 export const api = {
+  getOverview: (id: number) => request<AccountOverview>(`/accounts/${id}/overview`),
+  previewOrder: (body: PreviewRequest) => request<OrderPreview>("/orders/preview", { method: "POST", body: JSON.stringify(body) }),
+  confirmOrder: (previewId: string) => request<OrderRead>("/orders/confirm", { method: "POST", body: JSON.stringify({ preview_id: previewId }) }),
+  getWatchlist: () => request<string[]>("/watchlist"),
+  saveAsset: (symbol: string) => request<string[]>(`/watchlist/${encodeURIComponent(symbol)}`, { method: "PUT" }),
+  removeAsset: (symbol: string) => request<string[]>(`/watchlist/${encodeURIComponent(symbol)}`, { method: "DELETE" }),
+  me: () => request<AuthRead>("/auth/me"),
+  login: (body: { email: string; password: string }) => request<AuthRead>("/auth/login", { method: "POST", body: JSON.stringify(body) }),
+  signup: (body: { email: string; password: string; full_name: string }) => request<AuthRead>("/auth/signup", { method: "POST", body: JSON.stringify(body) }),
+  logout: () => request("/auth/logout", { method: "POST" }),
+  placeOrder: (body: OrderRequest) => request<OrderRead>("/orders/", { method: "POST", body: JSON.stringify(body) }),
+  processOrders: (accountId: number) => request(`/orders/process-pending?account_id=${accountId}`, { method: "POST" }),
   // Health
   health: () => request<Health>("/health"),
 
@@ -122,6 +147,8 @@ export const api = {
     request<OrderRead[]>(`/accounts/${accountId}/orders`),
   getTrades: (accountId: number) =>
     request<TradeRead[]>(`/accounts/${accountId}/trades`),
+  cancelOrder: (orderId: number, accountId: number) =>
+    request<OrderRead>(`/orders/${orderId}/cancel?account_id=${accountId}`, { method: "POST" }),
 
     // Symbols + seeding
   getSymbols: () => request<SymbolItem[]>("/symbols"),

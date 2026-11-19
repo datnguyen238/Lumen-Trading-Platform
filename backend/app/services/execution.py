@@ -1,124 +1,123 @@
+"""Atomic, long-only paper execution with reserved cash/shares and retry receipts."""
+import hashlib
 from decimal import Decimal
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
 
-from app.models.models import Account, Order, Trade, Position
-from app.models.enums import OrderStatus, OrderType
+from app.models.models import Account, Order, OrderReceipt, Trade, Position, ExecutionDetail
+from app.models.enums import OrderSide, OrderStatus, OrderType
 from app.schemas.orders import OrderCreate
-from app.services.pricing import get_last_close
+from app.services.pricing import get_execution_quote
 from app.services.positions import apply_fill
 
 
-def _validate_order_input(order_in: OrderCreate) -> tuple[str, Decimal]:
-    symbol = str(order_in.symbol).strip().upper()
-    if not symbol:
-        raise ValueError("Symbol is required")
+def _account(db, account_id):
+    account = db.query(Account).filter(Account.id == account_id).populate_existing().with_for_update().first()
+    if not account:
+        raise ValueError("Paper portfolio not found")
+    return account
 
-    qty = Decimal(order_in.quantity)
-    if qty <= 0:
-        raise ValueError("Quantity must be greater than 0")
 
-    return symbol, qty
+def _fingerprint(data):
+    values = [data.symbol.strip().upper(), data.side.value, data.order_type.value,
+              str(Decimal(data.quantity).normalize()),
+              str(Decimal(data.limit_price).normalize()) if data.limit_price is not None else ""]
+    return hashlib.sha256("|".join(values).encode()).hexdigest()
+
+
+def _existing(db, data):
+    if not data.client_order_id:
+        return None
+    receipt = db.get(OrderReceipt, (data.account_id, data.client_order_id))
+    if receipt:
+        if receipt.fingerprint != _fingerprint(data):
+            raise ValueError("This order reference was already used. Start a new order.")
+        return db.get(Order, receipt.order_id)
+    return None
+
+
+def _receipt(db, data, order):
+    if data.client_order_id:
+        db.add(OrderReceipt(account_id=data.account_id, request_key=data.client_order_id,
+                            fingerprint=_fingerprint(data), order_id=order.id))
+
+
+def available_resources(db, account, symbol, exclude_order_id=None):
+    pending = db.query(Order).filter(Order.account_id == account.id, Order.status == OrderStatus.PENDING).all()
+    reserved_cash = Decimal(0)
+    reserved_shares = Decimal(0)
+    for item in pending:
+        if item.id == exclude_order_id:
+            continue
+        remaining = Decimal(item.quantity) - Decimal(item.filled_quantity)
+        if item.side == OrderSide.BUY:
+            reserved_cash += remaining * Decimal(item.limit_price or 0)
+        elif item.symbol == symbol:
+            reserved_shares += remaining
+    pos = db.query(Position).filter(Position.account_id == account.id, Position.symbol == symbol).populate_existing().first()
+    owned = Decimal(pos.quantity) if pos else Decimal(0)
+    return max(Decimal(0), Decimal(account.cash_balance) - reserved_cash), max(Decimal(0), owned - reserved_shares)
+
+
+def _check(db, account, symbol, side, qty, price, exclude=None):
+    if not price.is_finite() or price <= 0:
+        raise ValueError("A valid market price is needed before trading.")
+    if side == OrderSide.BUY and qty * price < Decimal("0.01"):
+        raise ValueError("The trade value must be at least $0.01. Increase the amount or shares.")
+    cash, shares = available_resources(db, account, symbol, exclude)
+    if side == OrderSide.BUY and qty * price > cash:
+        raise ValueError("Insufficient cash balance. Reduce the amount or cancel an open buy order.")
+    if side == OrderSide.SELL and qty > shares:
+        raise ValueError("Insufficient position quantity. Reduce the shares or cancel an open sell order.")
+
+
+def _fill(db, account, order, quote):
+    price = Decimal(quote.close)
+    qty = Decimal(order.quantity) - Decimal(order.filled_quantity or 0)
+    _check(db, account, order.symbol, order.side, qty, price, order.id)
+    cash_before = Decimal(account.cash_balance)
+    apply_fill(db, account, order.symbol, order.side, qty, price)
+    db.add(ExecutionDetail(order_id=order.id, quote_timestamp=quote.timestamp, quote_price=price,
+                           cash_before=cash_before, cash_after=account.cash_balance, fees=0))
+    db.add(Trade(account_id=account.id, order_id=order.id, symbol=order.symbol,
+                 side=order.side, quantity=qty, price=price))
+    order.filled_quantity = order.quantity
+    order.avg_fill_price = price
+    order.status = OrderStatus.FILLED
+    db.flush()
 
 
 def execute_market_order(db: Session, order_in: OrderCreate) -> Order:
-    symbol, qty = _validate_order_input(order_in)
-
     if order_in.order_type != OrderType.MARKET:
-        raise ValueError("Only MARKET orders supported in v1")
+        raise ValueError("Choose MARKET for an immediate paper trade.")
+    return place_order(db, order_in)
 
-    account = db.query(Account).filter(Account.id == order_in.account_id).first()
-    if not account:
-        raise ValueError("Account not found")
 
-    price = get_last_close(db, symbol)
-    cost = qty * price
-
-    if order_in.side.value == "BUY" and Decimal(account.cash_balance) < cost:
-        raise ValueError("Insufficient cash balance")
-
-    if order_in.side.value == "SELL":
-        pos = (
-            db.query(Position)
-            .filter(and_(Position.account_id == account.id, Position.symbol == symbol))
-            .first()
-        )
-        if not pos or Decimal(pos.quantity) < qty:
-            raise ValueError("Insufficient position quantity")
-
+def place_order(db: Session, order_in: OrderCreate, preview=None, execution_quote=None) -> Order:
     try:
-        order = Order(
-            account_id=account.id,
-            symbol=symbol,
-            side=order_in.side,
-            order_type=order_in.order_type,
-            quantity=qty,
-            limit_price=order_in.limit_price,
-            status=OrderStatus.FILLED,
-            filled_quantity=qty,
-            avg_fill_price=price,
-        )
+        account = _account(db, order_in.account_id)
+        previous = _existing(db, order_in)
+        if previous:
+            db.commit()  # Release the account lock even for a retry.
+            return previous
+        symbol = order_in.symbol.strip().upper()
+        qty = Decimal(order_in.quantity)
+        quote = execution_quote if execution_quote is not None else get_execution_quote(db, symbol)
+        mark = Decimal(quote.close)
+        if order_in.order_type == OrderType.LIMIT and order_in.limit_price is None:
+            raise ValueError("Enter a limit price for this order.")
+        price = Decimal(order_in.limit_price) if order_in.order_type == OrderType.LIMIT else mark
+        _check(db, account, symbol, order_in.side, qty, price)
+        order = Order(account_id=account.id, symbol=symbol, side=order_in.side,
+                      order_type=order_in.order_type, quantity=qty, limit_price=order_in.limit_price,
+                      status=OrderStatus.PENDING, filled_quantity=0)
         db.add(order)
         db.flush()
-
-        trade = Trade(
-            account_id=account.id,
-            order_id=order.id,
-            symbol=symbol,
-            side=order_in.side,
-            quantity=qty,
-            price=price,
-        )
-        db.add(trade)
-
-        apply_fill(db, account, symbol, order_in.side, qty, price)
-        db.commit()
-        db.refresh(order)
-        return order
-    except Exception:
-        db.rollback()
-        raise
-
-
-def place_order(db: Session, order_in: OrderCreate) -> Order:
-    symbol, qty = _validate_order_input(order_in)
-
-    account = db.query(Account).filter(Account.id == order_in.account_id).first()
-    if not account:
-        raise ValueError("Account not found")
-
-    if order_in.order_type == OrderType.MARKET:
-        return execute_market_order(db, order_in)
-
-    if order_in.order_type != OrderType.LIMIT:
-        raise ValueError("Unsupported order_type")
-
-    if order_in.limit_price is None or Decimal(order_in.limit_price) <= 0:
-        raise ValueError("Valid limit_price is required for LIMIT orders")
-
-    # v1 does not reserve buying power; checks happen again at fill time.
-    if order_in.side.value == "SELL":
-        pos = (
-            db.query(Position)
-            .filter(and_(Position.account_id == account.id, Position.symbol == symbol))
-            .first()
-        )
-        if not pos or Decimal(pos.quantity) < qty:
-            raise ValueError("Insufficient position quantity")
-
-    try:
-        order = Order(
-            account_id=account.id,
-            symbol=symbol,
-            side=order_in.side,
-            order_type=order_in.order_type,
-            quantity=qty,
-            limit_price=Decimal(order_in.limit_price),
-            status=OrderStatus.PENDING,
-            filled_quantity=Decimal("0"),
-            avg_fill_price=None,
-        )
-        db.add(order)
+        crosses = order.side == OrderSide.BUY and mark <= price or order.side == OrderSide.SELL and mark >= price
+        if order.order_type == OrderType.MARKET or crosses:
+            _fill(db, account, order, quote)
+        if preview is not None:
+            preview.order_id = order.id
+        _receipt(db, order_in, order)
         db.commit()
         db.refresh(order)
         return order
@@ -128,77 +127,50 @@ def place_order(db: Session, order_in: OrderCreate) -> Order:
 
 
 def cancel_order(db: Session, order_id: int, account_id: int | None = None) -> Order:
-    q = db.query(Order).filter(Order.id == order_id)
-    if account_id is not None:
-        q = q.filter(Order.account_id == account_id)
-    order = q.first()
-    if not order:
-        raise ValueError("Order not found")
-    if order.status in (OrderStatus.FILLED, OrderStatus.CANCELED):
-        raise ValueError("Order is already closed")
+    if account_id is None:
+        raise ValueError("Select a paper portfolio first.")
+    try:
+        _account(db, account_id)
+        order = db.query(Order).filter(Order.id == order_id, Order.account_id == account_id).populate_existing().with_for_update().first()
+        if not order:
+            raise ValueError("Order not found")
+        if order.status != OrderStatus.PENDING:
+            raise ValueError("This order is already closed. Refresh activity for its latest status.")
+        order.status = OrderStatus.CANCELED
+        db.commit()
+        db.refresh(order)
+        return order
+    except Exception:
+        db.rollback()
+        raise
 
-    order.status = OrderStatus.CANCELED
-    db.commit()
-    db.refresh(order)
-    return order
 
-
-def process_pending_limit_orders(db: Session, symbol: str | None = None, limit: int = 100) -> dict:
-    q = (
-        db.query(Order)
-        .filter(Order.order_type == OrderType.LIMIT, Order.status == OrderStatus.PENDING)
-        .order_by(Order.created_at.asc())
-    )
+def process_pending_limit_orders(db: Session, symbol: str | None = None, limit: int = 100, account_id: int | None = None) -> dict:
+    query = db.query(Order).filter(Order.order_type == OrderType.LIMIT, Order.status == OrderStatus.PENDING)
     if symbol:
-        q = q.filter(Order.symbol == symbol.strip().upper())
-
-    orders = q.limit(max(1, limit)).all()
+        query = query.filter(Order.symbol == symbol.strip().upper())
+    if account_id is not None:
+        query = query.filter(Order.account_id == account_id)
+    orders = [(o.id, o.account_id) for o in query.order_by(Order.account_id, Order.created_at, Order.id).limit(max(1, min(limit, 500))).all()]
     filled = 0
-    skipped = 0
-
-    for order in orders:
+    for order_id, owner in orders:
         try:
-            mark = get_last_close(db, order.symbol)
-            limit_px = Decimal(order.limit_price) if order.limit_price is not None else None
-            if limit_px is None:
-                skipped += 1
-                continue
-
-            can_fill = (
-                (order.side.value == "BUY" and mark <= limit_px)
-                or (order.side.value == "SELL" and mark >= limit_px)
-            )
-            if not can_fill:
-                skipped += 1
-                continue
-
-            account = db.query(Account).filter(Account.id == order.account_id).first()
-            if not account:
-                skipped += 1
-                continue
-
-            qty = Decimal(order.quantity) - Decimal(order.filled_quantity)
-            if qty <= 0:
-                skipped += 1
-                continue
-
-            apply_fill(db, account, order.symbol, order.side, qty, mark)
-            trade = Trade(
-                account_id=order.account_id,
-                order_id=order.id,
-                symbol=order.symbol,
-                side=order.side,
-                quantity=qty,
-                price=mark,
-            )
-            db.add(trade)
-
-            order.filled_quantity = Decimal(order.filled_quantity) + qty
-            order.avg_fill_price = mark
-            order.status = OrderStatus.FILLED
-            filled += 1
-        except Exception:
-            skipped += 1
-
+            # A rejected fill must roll back every cash/position mutation for that order.
+            with db.begin_nested():
+                account = _account(db, owner)
+                order = db.query(Order).filter(Order.id == order_id).populate_existing().with_for_update().one()
+                if order.status != OrderStatus.PENDING:
+                    continue
+                quote = get_execution_quote(db, order.symbol)
+                # Never grant a resting order a fill using a price observed before it existed.
+                if quote.timestamp <= order.created_at:
+                    continue
+                mark = Decimal(quote.close)
+                target = Decimal(order.limit_price)
+                if (order.side == OrderSide.BUY and mark <= target) or (order.side == OrderSide.SELL and mark >= target):
+                    _fill(db, account, order, quote)
+                    filled += 1
+        except ValueError:
+            continue
     db.commit()
-    return {"processed": len(orders), "filled": filled, "skipped": skipped}
+    return {"processed": len(orders), "filled": filled, "skipped": len(orders) - filled}

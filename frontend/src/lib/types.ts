@@ -31,6 +31,9 @@ export type PriceBarRead = {
   low: string;
   close: string;
   volume?: string;
+  change?: string | null;
+  change_percent?: string | null;
+  previous_timestamp?: string | null;
 };
 
 export type OrderRead = {
@@ -38,11 +41,15 @@ export type OrderRead = {
   account_id: number;
   symbol: string;
   side: "BUY" | "SELL";
-  order_type: "MARKET" | string;
+  order_type: "MARKET" | "LIMIT";
   quantity: string;
   status?: string;
   filled_price?: string;
+  avg_fill_price: string | null;
+  filled_quantity: string;
+  limit_price: string | null;
   created_at?: string;
+  execution?: { quote_timestamp: string; quote_price: string; cash_before: string; cash_after: string; fees: string; model: string } | null;
 };
 
 export type TradeRead = {
@@ -59,6 +66,8 @@ export type TradeRead = {
 export type AccountSummary = {
   account_id: number;
   cash: string;
+  reserved_cash: string;
+  available_cash: string;
   equity: string;
   market_value: string;
   realized_pnl: string;
@@ -73,6 +82,8 @@ export type AccountSummary = {
       mark_price: string;
       market_value: string;
       unrealized_pnl: string;
+      available_quantity: string;
+      reserved_quantity: string;
     }
   >;
 };
@@ -83,10 +94,12 @@ export type MarketOrderRequest = {
   side: "BUY" | "SELL";
   order_type: "MARKET";
   quantity: number;
+  client_order_id?: string;
 };
 
 export type SymbolItem = {
   symbol: string;
+  asset_type?: string;
   kind?: "stock" | "crypto" | "index" | string;
   name?: string;
 };
@@ -97,8 +110,9 @@ export type BulkLatestRequest = {
 
 export type BulkLatestItem = {
   symbol: string;
-  close: string;         
-  timestamp: string;
+  close: string | number | null;
+  timestamp: string | null;
+  source?: string;
   // open?: string;
   // high?: string;
   // low?: string;
@@ -106,3 +120,15 @@ export type BulkLatestItem = {
 };
 
 export type BulkLatestResponse = BulkLatestItem[];
+
+export type AuthRead = { user: UserRead; accounts: AccountRead[]; csrf_token: string };
+export type OrderRequest = Omit<MarketOrderRequest, "order_type"> & { order_type: "MARKET" | "LIMIT"; limit_price?: number };
+
+export type AccountOverview = { account: AccountRead; positions: PositionRead[]; summary: AccountSummary; orders: OrderRead[]; trades: TradeRead[]; quotes: BulkLatestItem[] };
+export type PreviewRequest = { account_id: number; symbol: string; side: "BUY" | "SELL"; order_type: "MARKET" | "LIMIT"; quantity?: number; notional?: number; limit_price?: number };
+export type OrderPreview = {
+  id: string; account_id: number; symbol: string; side: "BUY" | "SELL"; order_type: "MARKET" | "LIMIT";
+  quantity: string; notional: string | null; limit_price: string | null; estimated_price: string; estimated_total: string;
+  quote_timestamp: string; expires_at: string; cash_before: string; cash_after: string; shares_before: string; shares_after: string;
+  available_cash: string; available_shares: string; fees: string; explanation: string;
+};
