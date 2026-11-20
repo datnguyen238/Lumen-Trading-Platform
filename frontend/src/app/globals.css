@@ -143,6 +143,17 @@ html{font-size:16px;scroll-behavior:smooth}body{margin:0;font-family:var(--font-
 .l-form select{display:block;width:100%;border:1px solid var(--input);background:var(--card);border-radius:7px;padding:10px 12px;margin-top:8px;color:var(--foreground);font-size:.8125rem}
 .l-unit-toggle{display:flex;gap:17px}.l-unit-toggle button{padding:0 0 6px;border:0;border-bottom:1px solid transparent;background:none;font-size:.75rem;color:var(--muted-foreground)}.l-unit-toggle button.active{color:var(--foreground);border-bottom-color:var(--foreground);font-weight:600}
 .l-quick-amounts{display:flex;flex-wrap:wrap;gap:6px}.l-quick-amounts button{min-height:32px;border:1px solid var(--border);background:transparent;border-radius:6px;padding:5px 9px;font-size:.6875rem}.l-quick-amounts button:hover{background:var(--secondary)}
+.l-limit-reference{margin-top:12px}
+.l-limit-reference-caption{font-size:.6875rem;line-height:1.6;color:var(--muted-foreground)}
+.l-limit-reference-caption span{display:block}
+.l-limit-shortcuts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}
+.l-limit-shortcuts button{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 8px;min-height:42px;padding:9px 10px;border:1px solid var(--input);border-radius:7px;background:transparent;color:var(--foreground);font-size:.75rem;text-align:left}
+.l-limit-shortcuts button:hover{background:var(--secondary)}
+.l-limit-shortcuts button span{color:var(--muted-foreground)}
+.l-limit-shortcuts button strong{font-weight:550;overflow-wrap:anywhere}
+.l-limit-reference-error{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--muted-foreground);font-size:.6875rem;line-height:1.6}
+.l-limit-reference-error button{min-height:32px;padding:4px;background:none;border:0;color:var(--foreground);text-decoration:underline}
+.l-order-ticket .l-limit-market-note{margin-top:10px;font-size:.6875rem;line-height:1.7;color:var(--muted-foreground)}
 .l-field-help{font-size:.6875rem;line-height:1.7;color:var(--muted-foreground);margin-top:-10px!important}.l-confirmation-icon.is-pending{background:var(--secondary);color:var(--foreground)}
 
 .l-asset-logo.l-logo-dark{background:var(--l-ink)}

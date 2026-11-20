@@ -43,6 +43,23 @@ export type PriceBarRead = {
 
 export type DailyPriceRead = PriceBarRead & { interval: "1d"; session_date: string; source: string };
 
+export type PriceRangeDays = 7 | 30 | 90 | 180 | 365;
+export type PriceRangeRead = {
+  symbol: string;
+  currency: string | null;
+  interval: "1d";
+  days: PriceRangeDays;
+  window_start_date: string;
+  window_end_date: string;
+  timezone: string;
+  start_date: string;
+  end_date: string;
+  low: string;
+  high: string;
+  observations: number;
+  source: "yfinance";
+};
+
 export type OrderRead = {
   currency: string;
   account_currency: string;

@@ -4,15 +4,19 @@ import Link from "next/link";
 import { ArrowRight, Check, ChevronLeft, ClipboardCheck, Clock3 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { errorMessage, exchangeRate, money, quantity, timestamp } from "@/lib/format";
-import type { OrderRead, OrderPreview, PriceBarRead } from "@/lib/types";
+import type { OrderRead, OrderPreview, PriceBarRead, PriceRangeDays, PriceRangeRead } from "@/lib/types";
 import { useSession } from "@/components/shell/session-provider";
 import { useResource } from "@/lib/use-resource";
 import { useAccount } from "./data";
 import { ErrorNotice } from "./common";
+import { LimitPriceReference } from "./limit-price-reference";
 
 type Review = { server: OrderPreview; request: { account_id: number; side: "BUY" | "SELL"; order_type: "MARKET" | "LIMIT"; quantity: number }; price: number; timestamp: string };
 const floorShares = (value: number, whole: boolean) => { const scale = whole ? 1 : 10000; return Math.floor((value + 1e-10) * scale) / scale; };
-export function TradeTicket({ symbol, quote, onFilled }: { symbol: string; quote: PriceBarRead | null; onFilled: () => void }) {
+export function TradeTicket({ symbol, quote, rangeDays, priceRange, rangeLoading, onRangeRetry, onFilled }: {
+  symbol: string; quote: PriceBarRead | null; rangeDays: PriceRangeDays; priceRange: PriceRangeRead | null;
+  rangeLoading: boolean; onRangeRetry: () => void; onFilled: () => void;
+}) {
   const session = useSession();
   const { accountId } = session;
   const currency = quote?.currency ?? null;
@@ -45,6 +49,8 @@ export function TradeTicket({ symbol, quote, onFilled }: { symbol: string; quote
   const shares = Number(holding?.available_quantity ?? 0);
   const price = orderType === "LIMIT" ? Number(limit) : Number(quote?.close);
   const validPrice = Number.isFinite(price) && price > 0;
+  const meetsLimit = orderType === "LIMIT" && validPrice && Number(quote?.close) > 0
+    && (side === "BUY" ? Number(quote?.close) <= price : Number(quote?.close) >= price);
   const accountPrice = price * rate;
   const input = Number(amount);
   const amountBased = unit === "amount" && side === "BUY" && orderType === "MARKET";
@@ -120,7 +126,11 @@ export function TradeTicket({ symbol, quote, onFilled }: { symbol: string; quote
         <label htmlFor="order-type">Order type<select id="order-type" value={orderType} onChange={e => { const next = e.target.value as "MARKET" | "LIMIT"; setOrderType(next); setUnit("shares"); setAmount("1"); setLimit(Number(quote?.close) > 0 ? Number(quote?.close).toFixed(whole ? 0 : 2) : ""); setError(null); }}><option value="MARKET">Market</option><option value="LIMIT">Limit</option></select></label>
         {side === "BUY" && orderType === "MARKET" && <div className="l-unit-toggle" aria-label="Enter order in"><button type="button" aria-pressed={unit === "amount"} className={unit === "amount" ? "active" : ""} onClick={() => { setUnit("amount"); setAmount(defaultAmount); }}>Amount</button><button type="button" aria-pressed={unit === "shares"} className={unit === "shares" ? "active" : ""} onClick={() => { setUnit("shares"); setAmount("1"); }}>Shares</button></div>}
         <label htmlFor="trade-quantity">{amountBased ? `Amount (${accountCurrency})` : "Shares"}<input id="trade-quantity" type="number" inputMode="decimal" min={amountBased || whole ? "1" : "0.0001"} step={amountBased ? baseWhole ? "1" : "0.01" : whole ? "1" : "0.0001"} value={amount} onChange={e => setAmount(e.target.value)} aria-describedby="trade-help trade-validation" required/></label>
-        {orderType === "LIMIT" && <label htmlFor="limit-price">Limit price ({currency})<input id="limit-price" type="number" inputMode="decimal" min={whole ? "1" : "0.01"} step={whole ? "1" : "0.01"} value={limit} onChange={e => setLimit(e.target.value)} required/><small id="trade-help">{side === "BUY" ? "Maximum buy price." : "Minimum sell price."}</small></label>}
+        {orderType === "LIMIT" && currency && <div>
+          <label htmlFor="limit-price">Limit price ({currency})<input id="limit-price" type="number" inputMode="decimal" min={whole ? "1" : "0.01"} step={whole ? "1" : "0.01"} value={limit} onChange={e => { setLimit(e.target.value); setError(null); }} required/><small id="trade-help">{side === "BUY" ? "Maximum buy price." : "Minimum sell price."}</small></label>
+          <LimitPriceReference symbol={symbol} currency={currency} days={rangeDays} range={priceRange} loading={rangeLoading} onRetry={onRangeRetry} onChoose={value => { setLimit(value); setError(null); }}/>
+          {meetsLimit && <p className="l-limit-market-note" role="status">Latest price meets this limit; it may fill immediately.</p>}
+        </div>}
         {orderType === "MARKET" && <p id="trade-help" className="l-field-help">{amountBased && validPrice && count > 0 ? `Est. ${quantity(count)} shares` : whole ? "Whole shares only." : "Up to 4 decimal places."}</p>}
         <div className="l-quick-amounts">{amountBased ? (baseWhole ? [1000000, 5000000] : [100, 500, 1000]).map(value => <button type="button" key={value} onClick={() => setAmount(String(value))}>{cashFmt(value, 0)}</button>) : null}<button type="button" disabled={!selected || !validPrice || !fxReady} onClick={() => setAmount(side === "SELL" ? String(shares) : amountBased ? String(baseWhole ? Math.floor(cash) : Math.floor(cash * 100) / 100) : String(floorShares(cash / accountPrice, whole)))}>{side === "SELL" ? "Sell all" : "Max"}</button></div>
         <dl className="l-trade-details"><div><dt>Market price</dt><dd>{quote ? fmt(quote.close) : "Unavailable"}</dd></div><div><dt>{side === "BUY" ? "Buying power" : "Shares available"}</dt><dd>{selected ? side === "BUY" ? cashFmt(cash) : `${quantity(shares)} shares` : "Loading…"}</dd></div>{crossCurrency && fxReady && <div><dt>Exchange rate</dt><dd>{exchangeRate(rate, currency!, accountCurrency!)}</dd></div>}<div className="l-estimate"><dt>Estimated {side === "BUY" ? "cost" : "proceeds"}</dt><dd>{validPrice && fxReady && count > 0 ? cashFmt(count * accountPrice) : "—"}</dd></div></dl>

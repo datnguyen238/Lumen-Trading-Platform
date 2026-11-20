@@ -43,6 +43,30 @@ class DailyPriceRead(BaseModel):
         return self
 
 
+class PriceRangeRead(BaseModel):
+    symbol: str
+    currency: str | None = None
+    interval: Literal["1d"] = "1d"
+    days: Literal[7, 30, 90, 180, 365]
+    window_start_date: date
+    window_end_date: date
+    timezone: str
+    start_date: date
+    end_date: date
+    low: Decimal = Field(gt=0, allow_inf_nan=False)
+    high: Decimal = Field(gt=0, allow_inf_nan=False)
+    observations: int = Field(gt=0)
+    source: Literal["yfinance"] = "yfinance"
+
+    model_config = {"frozen": True}
+
+    @model_validator(mode="after")
+    def valid_range(self):
+        if self.low > self.high or self.start_date > self.end_date:
+            raise ValueError("Invalid historical price range")
+        return self
+
+
 class LoadStockRequest(BaseModel):
     symbol: str
     start: date

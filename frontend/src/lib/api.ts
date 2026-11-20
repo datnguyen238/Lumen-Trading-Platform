@@ -14,6 +14,8 @@ import type {
   PositionRead,
   PriceBarRead,
   DailyPriceRead,
+  PriceRangeDays,
+  PriceRangeRead,
   TradeRead,
   UserRead,
 } from "@/lib/types";
@@ -112,6 +114,7 @@ export const api = {
 
   // Prices
   getDailyPrice: (symbol: string) => request<DailyPriceRead>(`/prices/daily?symbol=${encodeURIComponent(symbol)}`),
+  getPriceRange: (symbol: string, days: PriceRangeDays) => request<PriceRangeRead>(`/prices/range?symbol=${encodeURIComponent(symbol)}&days=${days}`),
   getLatestPrice: (symbol: string) =>
     request<PriceBarRead>(`/prices/latest?symbol=${encodeURIComponent(symbol)}`),
   refreshLatestPrice: (symbol: string) =>

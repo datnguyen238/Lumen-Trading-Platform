@@ -7,6 +7,7 @@ from pathlib import Path
 import tempfile
 from threading import Lock
 from time import monotonic
+from zoneinfo import ZoneInfo
 
 import requests
 import yfinance as yf
@@ -16,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.models.models import PriceBar
 from app.core.config import settings
 from app.services.currencies import known_currency, normalize_currency
-from app.schemas.prices import DailyPriceRead
+from app.schemas.prices import DailyPriceRead, PriceRangeRead
 
 
 if settings.vercel:
@@ -31,6 +32,11 @@ _DAILY_STOCK_CACHE: OrderedDict[str, tuple[float, DailyPriceRead]] = OrderedDict
 _DAILY_STOCK_CACHE_LOCK = Lock()
 _DAILY_STOCK_CACHE_SIZE = 128
 _DAILY_STOCK_TTL_SECONDS = 300
+_PRICE_RANGE_CACHE: OrderedDict[tuple[str, int], tuple[float, PriceRangeRead]] = OrderedDict()
+_PRICE_RANGE_CACHE_LOCK = Lock()
+_PRICE_RANGE_CACHE_SIZE = 128
+_PRICE_RANGE_TTL_SECONDS = 300
+_PRICE_RANGE_DAYS = (7, 30, 90, 180, 365)
 
 
 def _market_metadata(ticker, symbol: str) -> dict:
@@ -87,6 +93,81 @@ def fetch_daily_stock_bar_yfinance(symbol: str) -> DailyPriceRead:
         _DAILY_STOCK_CACHE.move_to_end(symbol)
         while len(_DAILY_STOCK_CACHE) > _DAILY_STOCK_CACHE_SIZE:
             _DAILY_STOCK_CACHE.popitem(last=False)
+    return item
+
+
+def fetch_stock_price_range_yfinance(symbol: str, days: int) -> PriceRangeRead:
+    """Aggregate daily highs/lows across the last N exchange-local calendar dates.
+
+    The current local date and the preceding N-1 dates are included. Returned
+    dates describe actual observations, including partial listing histories.
+    """
+    symbol = str(symbol).strip().upper()
+    if not symbol or days not in _PRICE_RANGE_DAYS:
+        raise ValueError("A ticker and a supported history range are required")
+    key = (symbol, days)
+    with _PRICE_RANGE_CACHE_LOCK:
+        cached = _PRICE_RANGE_CACHE.get(key)
+        if cached and monotonic() < cached[0]:
+            _PRICE_RANGE_CACHE.move_to_end(key)
+            return cached[1]
+        _PRICE_RANGE_CACHE.pop(key, None)
+
+    # Fetch a padded UTC window, then filter by the feed's market-local dates.
+    # The padding includes today's session on either side of the date line.
+    request_date = datetime.now(timezone.utc).date()
+    ticker = yf.Ticker(_to_yfinance_symbol(symbol))
+    history = ticker.history(
+        start=request_date - timedelta(days=days + 2),
+        end=request_date + timedelta(days=2),
+        interval="1d", auto_adjust=False, keepna=True, timeout=8,
+    )
+    if history.empty:
+        raise ValueError("No daily price observations for this range")
+    if hasattr(history.columns, "levels"):
+        history = history.copy()
+        history.columns = history.columns.get_level_values(0)
+    index_tz = getattr(history.index, "tz", None)
+    if index_tz is None:
+        raise ValueError("Daily price observations have no market timezone")
+    market_tz = ZoneInfo(str(index_tz))
+    today = datetime.now(timezone.utc).astimezone(market_tz).date()
+    cutoff = today - timedelta(days=days - 1)
+    bars = []
+    seen_dates = set()
+    for index, row in history.sort_index().iterrows():
+        timestamp = index.to_pydatetime() if hasattr(index, "to_pydatetime") else index
+        session_date = timestamp.date()
+        if not cutoff <= session_date <= today:
+            continue
+        if session_date in seen_dates:
+            raise ValueError("Duplicate daily price observations")
+        seen_dates.add(session_date)
+        # Validate every in-window bar; ignoring an invalid day could hide the
+        # true high/low while presenting an apparently complete range.
+        bars.append(DailyPriceRead(
+            symbol=symbol, session_date=session_date, timestamp=timestamp,
+            open=Decimal(str(row.get("Open"))), high=Decimal(str(row.get("High"))),
+            low=Decimal(str(row.get("Low"))), close=Decimal(str(row.get("Close"))),
+        ))
+    if not bars:
+        raise ValueError("No daily price observations for this range")
+    item = PriceRangeRead(
+        symbol=symbol, currency=_market_metadata(ticker, symbol)["currency"], days=days,
+        window_start_date=cutoff, window_end_date=today, timezone=market_tz.key,
+        start_date=bars[0].session_date, end_date=bars[-1].session_date,
+        low=min(bar.low for bar in bars), high=max(bar.high for bar in bars),
+        observations=len(bars),
+    )
+    # Never keep the previous calendar window through the market's midnight.
+    next_midnight = datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=market_tz)
+    ttl = min(_PRICE_RANGE_TTL_SECONDS, (next_midnight - datetime.now(timezone.utc)).total_seconds())
+    if ttl > 0:
+        with _PRICE_RANGE_CACHE_LOCK:
+            _PRICE_RANGE_CACHE[key] = (monotonic() + ttl, item)
+            _PRICE_RANGE_CACHE.move_to_end(key)
+            while len(_PRICE_RANGE_CACHE) > _PRICE_RANGE_CACHE_SIZE:
+                _PRICE_RANGE_CACHE.popitem(last=False)
     return item
 
 

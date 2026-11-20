@@ -22,12 +22,13 @@ from datetime import date
 from app.db.session import get_db
 from app.core.config import settings
 from app.models.models import PriceBar
-from app.schemas.prices import DailyPriceRead, PriceBarRead, LoadStockRequest, LoadCryptoRequest
+from app.schemas.prices import DailyPriceRead, PriceBarRead, PriceRangeRead, LoadStockRequest, LoadCryptoRequest
 from app.data.price_loader import (
     load_stock_history,
     load_crypto_klines,
     fetch_latest_stock_bar_yfinance,
     fetch_daily_stock_bar_yfinance,
+    fetch_stock_price_range_yfinance,
 )
 from app.services.price_refresh import _upsert_bar, refresh_watchlist_db, update_instrument_metadata
 
@@ -141,6 +142,18 @@ def daily(symbol: str = Query(min_length=1, max_length=40)):
         return fetch_daily_stock_bar_yfinance(symbol)
     except Exception:
         raise HTTPException(status_code=503, detail="Daily price details are temporarily unavailable. Please try again.") from None
+
+
+@router.get("/range", response_model=PriceRangeRead)
+def price_range(symbol: str = Query(min_length=1, max_length=40), days: int = Query(default=30)):
+    if not symbol.strip():
+        raise HTTPException(status_code=422, detail="A ticker is required.")
+    if days not in (7, 30, 90, 180, 365):
+        raise HTTPException(status_code=422, detail="Choose a supported history range.")
+    try:
+        return fetch_stock_price_range_yfinance(symbol, days)
+    except Exception:
+        raise HTTPException(status_code=503, detail="Historical price range is temporarily unavailable. Please try again.") from None
 
 
 @router.post("/refresh", response_model=PriceBarRead)

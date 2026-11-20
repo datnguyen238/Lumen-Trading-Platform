@@ -29,6 +29,7 @@ The current build uses **yfinance** for equities, **PostgreSQL** (Supabase) for 
 - Portfolio equity, buying power, holdings, allocation, realized and unrealized returns
 - Searchable investment directory with stock/fund filters and quote timestamps
 - Asset research with 1W/1M/3M/6M/1Y price histories
+- Editable limit-price shortcuts from the selected period's daily high/low, with matching exchange-local chart dates
 - Dollar/share entry, market and limit orders, reserved buying power, review, and fill/pending confirmation
 - Account order activity, fill details, status filters, and pending-order cancellation
 - Company logos, green/red gains and losses, and database-backed watchlists that sync across devices
