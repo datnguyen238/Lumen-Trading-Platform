@@ -9,6 +9,7 @@ class TradeRead(BaseModel):
     account_id: int
     order_id: int
     symbol: str
+    currency: str
     side: OrderSide
     quantity: Decimal
     price: Decimal

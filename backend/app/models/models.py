@@ -31,6 +31,7 @@ class Account(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String, nullable=False, default="Main")
     cash_balance: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False, default=100000.0)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default='USD', server_default='USD')
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="accounts")
@@ -44,6 +45,7 @@ class PriceBar(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     symbol: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
 
     open: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False)
@@ -80,6 +82,10 @@ class Order(Base):
     trades: Mapped[list["Trade"]] = relationship(back_populates="order", cascade="all, delete-orphan")
     execution: Mapped["ExecutionDetail | None"] = relationship(uselist=False, cascade="all, delete-orphan")
 
+    @property
+    def currency(self) -> str:
+        return self.account.currency
+
 
 class Trade(Base):
     __tablename__ = "trades"
@@ -98,6 +104,10 @@ class Trade(Base):
     account: Mapped["Account"] = relationship(back_populates="trades")
     order: Mapped["Order"] = relationship(back_populates="trades")
 
+    @property
+    def currency(self) -> str:
+        return self.account.currency
+
 
 class Position(Base):
     __tablename__ = "positions"
@@ -111,6 +121,10 @@ class Position(Base):
 
     account: Mapped["Account"] = relationship(back_populates="positions")
 
+    @property
+    def currency(self) -> str:
+        return self.account.currency
+
     __table_args__ = (
         Index("ix_positions_account_symbol", "account_id", "symbol", unique=True),
     )
@@ -122,6 +136,8 @@ class Symbol(Base):
     symbol: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     name: Mapped[str | None] = mapped_column(String, nullable=True)
     asset_type: Mapped[str] = mapped_column(String, nullable=False, default="stock")  # stock/index/crypto
+    currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    exchange: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

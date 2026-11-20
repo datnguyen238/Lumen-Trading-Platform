@@ -31,7 +31,7 @@ python scripts/check_deployment.py
 
 Bootstrap creates missing application tables and applies privacy rules; it preserves existing accounts, prices, positions, and trades. The database role must own the tables or have permission to create tables, enable RLS, and revoke browser-role grants. The trusted SQL backend role must retain table access. Use a separate migration workflow for future changes to existing columns: `create_all` does not perform those migrations.
 
-Vercel request instances do **not** run schema setup. Run bootstrap before deploying a release that adds tables.
+Vercel request instances do **not** run schema setup. Run bootstrap before deploying a release that adds tables or currency columns. The currency migration is additive and idempotent: existing portfolios retain their cash and become USD portfolios; known US starter prices are labeled USD, while unclassified instruments require a provider refresh. It never converts or rescales old cash, positions, trades, or prices.
 
 ## 2. Import the repository in Vercel
 

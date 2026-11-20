@@ -13,6 +13,8 @@ class SymbolRead(BaseModel):
     symbol: str
     name: Optional[str] = None
     asset_type: str
+    currency: str | None = None
+    exchange: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -22,5 +24,7 @@ class SymbolSearchRead(BaseModel):
     symbol: str
     name: Optional[str] = None
     asset_type: str
+    currency: str | None = None
+    exchange: str | None = None
 
     model_config = {"from_attributes": True}

@@ -115,7 +115,7 @@ npm run dev
 **Frontend runs at:**  
 `http://localhost:3000`
 
-Create an account with your name, email, and an 8+ character password, or sign in to resume. New portfolios start with $100,000 in virtual cash. The primary workflow is **Portfolio → Discover → Research → Review paper order → Activity**.
+Create an account with your name, email, and an 8+ character password, or sign in to resume. Choose a USD or VND portfolio. USD portfolios start with $100,000 and VND portfolios with ₫1,000,000,000 in virtual cash. These are independent practice balances, not an exchange-rate conversion. The primary workflow is **Portfolio → Discover → Research → Review paper order → Activity**.
 
 For a production check, run `npm run build` with Node 22.x and `npm start`. Backend tests run with `DATABASE_URL=sqlite+pysqlite:///:memory: python -m pytest -q`; they use an isolated database.
 
@@ -144,9 +144,11 @@ The product brief is in `PRODUCT.md` and the visual system is in `DESIGN.md`. Lo
 - Legacy passwordless accounts cannot be claimed by entering their email or portfolio number; an operator must deliberately attach credentials after verifying ownership
 - Signed-in watchlists are persisted in PostgreSQL per user and sync across devices; guest watchlists stay on the browser
 - Market orders fill at the latest stored price, including outside exchange hours; review estimates can differ from the final fill
-- Market and limit orders are long-only, support up to four share decimals, and accept a client order key for safe retries
-- Trade previews and dollar-to-share conversions are calculated server-side; reviews expire after two minutes, and confirming the same review is idempotent
-- Dollar buys start at $1 and round shares down so the final fill never exceeds the dollar budget
+- Market and limit orders are long-only; USD supports up to four share decimals and VND uses whole shares and whole đồng. Orders and accept a client order key for safe retries
+- Trade previews and amount-to-share conversions are calculated server-side; reviews expire after two minutes, and confirming the same review is idempotent
+- Amount-based buys round shares down so the final fill never exceeds the native-currency budget; a VND budget must cover at least one whole share
+- Quote currency is stored with each price bar. Account currency is fixed at creation; previews, direct orders, worker fills, and valuations reject currency mismatches. No implicit FX conversion is performed
+- Search accepts explicit Vietnamese listings such as `FPT.VN` and `VNM.VN`, with live chart-feed validation when company search omits the listing. `VNM` is a separate US ETF; listing currency/exchange appear in search results. Coverage depends on Yahoo; this is not a complete Vietnam exchange directory
 - Each new fill stores its source quote time, price, cash before/after, fee, and simulation model
 - Resting limits cannot fill from observations that predate the order; quotes older than seven days or more than five minutes in the future are rejected for execution
 - `/accounts/{id}/overview` returns a coherent account view with server-owned available cash and sellable shares
@@ -155,7 +157,7 @@ The product brief is in `PRODUCT.md` and the visual system is in `DESIGN.md`. Lo
 - `GET /health` checks the database connection and reports the matcher’s last successful cycle
 - Run `.venv/bin/python scripts/verify_paper_trading.py` from `backend` for a live-database API round trip that rolls back all verification records
 - A dedicated Vercel Daemon (or the local embedded worker) checks quotes and pending limits every 30 seconds while running; open limits reserve cash/shares until filled or canceled
-- No spread, slippage, market depth, dividends, corporate actions, borrowing, or real brokerage execution is simulated
+- No spread, slippage, market depth, dividends, corporate actions, borrowing, or real brokerage execution is simulated. Vietnam order lots, tick bands, price limits, market sessions, fees/taxes, and T+2 settlement are not simulated; whole-share VND practice is not a full HOSE broker simulator
 - Email verification and self-service password recovery are not included in this simple login
 - Company logos are bundled for starter symbols from Financial Modeling Prep; additional symbols request its public logo endpoint, falling back to the ticker on failure
 - Fresh yfinance intraday observations are normalized to UTC; previously stored timestamps are not rewritten

@@ -28,7 +28,7 @@ from app.data.price_loader import (
     load_crypto_klines,
     fetch_latest_stock_bar_yfinance,
 )
-from app.services.price_refresh import _upsert_bar, refresh_watchlist_db
+from app.services.price_refresh import _upsert_bar, refresh_watchlist_db, update_instrument_metadata
 
 
 
@@ -81,6 +81,7 @@ def _fetch_bulk_latest_bars(symbols: list[str]) -> list[dict]:
                 "timestamp": item["timestamp"].isoformat(),
                 "close": str(item["close"]),
                 "source": item.get("source", "yfinance"),
+                "currency": item.get('currency'),
             }
         )
     return out
@@ -112,7 +113,7 @@ def load_crypto(req: LoadCryptoRequest, db: Session = Depends(get_db)):
 def _with_change(db: Session, row: PriceBar):
     day_start = datetime.combine(row.timestamp.date(), datetime.min.time())
     previous = db.query(PriceBar).filter(PriceBar.symbol == row.symbol, PriceBar.timestamp < day_start).order_by(PriceBar.timestamp.desc()).first()
-    row.change = row.close - previous.close if previous and previous.close > 0 else None
+    row.change = row.close - previous.close if previous and previous.close > 0 and previous.currency == row.currency else None
     row.change_percent = row.change / previous.close * 100 if row.change is not None else None
     row.previous_timestamp = previous.timestamp if previous else None
     return row
@@ -140,6 +141,7 @@ def refresh(symbol: str, db: Session = Depends(get_db)):
     item = _get_live_item(s_norm, force_refresh=True)
     if item:
         try:
+            update_instrument_metadata(db, s_norm, item)
             row = _upsert_bar(
                 db,
                 s_norm,
@@ -149,6 +151,7 @@ def refresh(symbol: str, db: Session = Depends(get_db)):
                 item["low"],
                 item["close"],
                 item.get("volume"),
+                currency=item.get('currency'),
             )
             db.commit()
             db.refresh(row)
@@ -197,6 +200,7 @@ def history(symbol: str, start: date, end: date, db: Session = Depends(get_db)):
         {
             "id": row.id,
             "symbol": row.symbol,
+            "currency": row.currency,
             "timestamp": row.timestamp,
             "open": row.open,
             "high": row.high,
@@ -231,6 +235,7 @@ def latest_bulk(symbols: list[str], force: bool = False, db: Session = Depends(g
 
         if item and item.get("close") is not None:
             try:
+                update_instrument_metadata(db, s_norm, item)
                 row = _upsert_bar(
                     db,
                     s_norm,
@@ -240,6 +245,7 @@ def latest_bulk(symbols: list[str], force: bool = False, db: Session = Depends(g
                     item["low"],
                     item["close"],
                     item.get("volume"),
+                    currency=item.get('currency'),
                 )
                 touched.append(row)
                 out.append(
@@ -248,6 +254,7 @@ def latest_bulk(symbols: list[str], force: bool = False, db: Session = Depends(g
                         "timestamp": item.get("timestamp").isoformat(),
                         "close": item.get("close"),
                         "source": item.get("source", "yfinance"),
+                        "currency": row.currency,
                     }
                 )
                 continue
@@ -267,10 +274,11 @@ def latest_bulk(symbols: list[str], force: bool = False, db: Session = Depends(g
                     "timestamp": row.timestamp,
                     "close": str(row.close),
                     "source": "db",
+                    "currency": row.currency,
                 }
             )
         else:
-            out.append({"symbol": s_norm, "timestamp": None, "close": None, "source": "none"})
+            out.append({"symbol": s_norm, "timestamp": None, "close": None, "source": "none", "currency": None})
 
     if touched:
         db.commit()
@@ -396,6 +404,7 @@ def _normalize_ws_payload(decoded: dict) -> dict | None:
         "close": str(price),
         "timestamp": ts,
         "source": "yfinance_ws",
+        "currency": decoded.get('currency'),
     }
 
 

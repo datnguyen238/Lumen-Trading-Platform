@@ -16,7 +16,7 @@ def get_last_close(db: Session, symbol: str) -> Decimal:
         raise ValueError(f"No price data for symbol '{symbol}'. Load prices first.")
     return Decimal(row.close)
 
-def get_mark_price(db: Session, symbol: str) -> Decimal:
+def get_mark_price(db: Session, symbol: str, currency: str | None = None) -> Decimal:
     symbol = str(symbol).strip().upper()
     row = (
         db.query(PriceBar)
@@ -26,6 +26,10 @@ def get_mark_price(db: Session, symbol: str) -> Decimal:
     )
     if not row:
         raise ValueError(f"No price data for '{symbol}'")
+    if currency:
+        from app.services.currencies import quote_currency
+        if quote_currency(db, row) != currency:
+            raise ValueError(f'Refresh {symbol} to confirm a price in this portfolio’s {currency} currency.')
     return Decimal(row.close)
 
 
@@ -53,9 +57,10 @@ def refresh_execution_quote(db: Session, symbol: str):
     # Callers run this before creating or mutating any order.
     db.commit()
     from app.data.price_loader import fetch_latest_stock_bar_yfinance
-    from app.services.price_refresh import _upsert_bar
+    from app.services.price_refresh import _upsert_bar, update_instrument_metadata
     item = fetch_latest_stock_bar_yfinance(symbol)
     if item:
-        _upsert_bar(db, symbol, item['timestamp'], item['open'], item['high'], item['low'], item['close'], item.get('volume'))
+        update_instrument_metadata(db, symbol, item)
+        _upsert_bar(db, symbol, item['timestamp'], item['open'], item['high'], item['low'], item['close'], item.get('volume'), currency=item.get('currency'))
         db.commit()
     return get_execution_quote(db, symbol)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.models import User
@@ -10,4 +10,8 @@ router = APIRouter()
 
 @router.get("/accounts/{account_id}/summary", response_model=AccountSummary)
 def account_summary(account_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    return build_summary(db, owned_account(account_id, db, user))
+    account = owned_account(account_id, db, user)
+    try:
+        return build_summary(db, account)
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from None

@@ -26,9 +26,9 @@ export function AssetIdentity({ symbol, name, link = true }: { symbol: string; n
 }
 export function SaveAsset({ symbol }: { symbol: string }) { const { symbols, toggle, busy } = useWatchlist(); const saved = symbols.includes(symbol); return <button className={`l-icon-button ${saved ? "is-saved" : ""}`} disabled={busy} onClick={() => void toggle(symbol)} aria-label={`${saved ? "Remove" : "Save"} ${symbol} ${saved ? "from" : "to"} watchlist`} aria-pressed={saved}><Bookmark size={18} fill={saved ? "currentColor" : "none"}/></button>; }
 
-export function PriceChange({ change, percentage }: { change?: string | number | null; percentage?: string | number | null }) {
+export function PriceChange({ change, percentage, currency }: { currency?: string | null; change?: string | number | null; percentage?: string | number | null }) {
   if (change == null || percentage == null) return null;
   const value = Number(change);
   if (!Number.isFinite(value)) return null;
-  return <span className={`l-price-change ${value > 0 ? "l-positive" : value < 0 ? "l-negative" : "l-muted"}`} aria-label={`${value === 0 ? "Unchanged" : value > 0 ? "Up" : "Down"} ${signedMoney(Math.abs(value))}, ${percent(Math.abs(Number(percentage)))} versus previous stored close`}>{value > 0 ? "+" : value < 0 ? "−" : ""}{Math.abs(Number(percentage)).toFixed(2)}%</span>;
+  return <span className={`l-price-change ${value > 0 ? "l-positive" : value < 0 ? "l-negative" : "l-muted"}`} aria-label={`${value === 0 ? "Unchanged" : value > 0 ? "Up" : "Down"} ${signedMoney(Math.abs(value), currency ?? null)}, ${percent(Math.abs(Number(percentage)))} versus previous stored close`}>{value > 0 ? "+" : value < 0 ? "−" : ""}{Math.abs(Number(percentage)).toFixed(2)}%</span>;
 }

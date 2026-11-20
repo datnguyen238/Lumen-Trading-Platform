@@ -61,7 +61,7 @@ def build_summary(db: Session, acc: Account) -> AccountSummary:
             continue
 
         avg_cost = Decimal(p.average_price)
-        mark = get_mark_price(db, p.symbol)
+        mark = get_mark_price(db, p.symbol, acc.currency)
         market_value = mark * qty
         unrealized = (mark - avg_cost) * qty
         market_value_total += market_value
@@ -69,6 +69,7 @@ def build_summary(db: Session, acc: Account) -> AccountSummary:
 
         out_positions[p.symbol] = SymbolPnL(
             symbol=p.symbol,
+            currency=acc.currency,
             quantity=qty,
             avg_cost=avg_cost,
             mark_price=mark,
@@ -83,6 +84,7 @@ def build_summary(db: Session, acc: Account) -> AccountSummary:
 
     return AccountSummary(
         account_id=account_id,
+        currency=acc.currency,
         cash=cash,
         reserved_cash=reserved_cash,
         available_cash=max(Decimal(0), cash-reserved_cash),

@@ -18,7 +18,7 @@ function Status({ order }: { order: OrderRead }) {
 }
 function total(order: OrderRead) {
   return Number(order.filled_quantity) > 0 && order.avg_fill_price
-    ? `${money(Number(order.avg_fill_price) * Number(order.filled_quantity))} total`
+    ? `${money(Number(order.avg_fill_price) * Number(order.filled_quantity), undefined, order.currency)} total`
     : "Not filled";
 }
 
@@ -69,9 +69,9 @@ export function Activity() {
               <thead><tr><th scope="col">Investment</th><th scope="col">Order</th><th scope="col">Quantity</th><th scope="col">Fill price</th><th scope="col">Placed</th><th scope="col">Status</th></tr></thead>
               <tbody>{visible.map((order) => <tr key={order.id}>
                 <td><AssetIdentity symbol={order.symbol}/></td>
-                <td>{order.side === "BUY" ? "Buy" : "Sell"}<small>{order.order_type === "LIMIT" ? `Limit ${money(order.limit_price)}` : "Market"}</small></td>
+                <td>{order.side === "BUY" ? "Buy" : "Sell"}<small>{order.order_type === "LIMIT" ? `Limit ${money(order.limit_price, undefined, order.currency)}` : "Market"}</small></td>
                 <td>{quantity(order.quantity)}{Number(order.filled_quantity) > 0 && Number(order.filled_quantity) < Number(order.quantity) && <small>{quantity(order.filled_quantity)} filled</small>}</td>
-                <td>{money(order.avg_fill_price)}<small>{total(order)}</small></td>
+                <td>{money(order.avg_fill_price, undefined, order.currency)}<small>{total(order)}</small></td>
                 <td><span className="l-muted">{timestamp(order.created_at)}</span></td>
                 <td><Status order={order}/><div style={{ marginTop: 6 }}>{cancelButton(order)}</div></td>
               </tr>)}</tbody>
@@ -81,8 +81,8 @@ export function Activity() {
             {visible.map((order) => <li className="l-mobile-order" key={order.id}>
               <header><AssetIdentity symbol={order.symbol}/><Status order={order}/></header>
               <dl className="l-mobile-order-details">
-                <div><dt>{order.order_type === "LIMIT" ? `Limit ${money(order.limit_price)}` : "Market"}{Number(order.filled_quantity) > 0 && Number(order.filled_quantity) < Number(order.quantity) ? ` · ${quantity(order.filled_quantity)} filled` : ""}</dt><dd>{order.side === "BUY" ? "Buy" : "Sell"} {quantity(order.quantity)} shares</dd></div>
-                <div><dt>Fill price</dt><dd>{money(order.avg_fill_price)}</dd></div>
+                <div><dt>{order.order_type === "LIMIT" ? `Limit ${money(order.limit_price, undefined, order.currency)}` : "Market"}{Number(order.filled_quantity) > 0 && Number(order.filled_quantity) < Number(order.quantity) ? ` · ${quantity(order.filled_quantity)} filled` : ""}</dt><dd>{order.side === "BUY" ? "Buy" : "Sell"} {quantity(order.quantity)} shares</dd></div>
+                <div><dt>Fill price</dt><dd>{money(order.avg_fill_price, undefined, order.currency)}</dd></div>
               </dl>
               <footer><time dateTime={order.created_at}>{timestamp(order.created_at)}</time><span>{total(order)}</span></footer>
               {cancelButton(order)}

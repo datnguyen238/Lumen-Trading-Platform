@@ -28,7 +28,7 @@ def test_company_search_returns_canonical_listing_without_saving_query(client, d
     for query in ('Anthropic', '  ANTHROPIC  '):
         response = client.get('/symbols/search', params={'q': query})
         assert response.status_code == 200
-        assert response.json() == [{'symbol': 'ANT', 'name': 'Anthropic PBC', 'asset_type': 'stock'}]
+        assert response.json() == [{'symbol': 'ANT', 'name': 'Anthropic PBC', 'asset_type': 'stock', 'currency': None, 'exchange': None}]
     assert calls == ['anthropic']
     assert db_session.query(Symbol).count() == 0
 

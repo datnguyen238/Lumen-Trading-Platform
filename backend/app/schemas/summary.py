@@ -5,6 +5,7 @@ from typing import Dict
 
 class SymbolPnL(BaseModel):
     symbol: str
+    currency: str
     quantity: Decimal
     avg_cost: Decimal
     mark_price: Decimal
@@ -16,6 +17,7 @@ class SymbolPnL(BaseModel):
 
 class AccountSummary(BaseModel):
     account_id: int
+    currency: str
     cash: Decimal
     reserved_cash: Decimal = Decimal("0")
     available_cash: Decimal = Decimal("0")

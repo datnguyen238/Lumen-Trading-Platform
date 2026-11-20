@@ -8,6 +8,7 @@ from app.api import api_router
 from app.db.session import engine
 from app.db.base import Base
 from app.db.privacy import protect_private_tables
+from app.db.migrations import migrate_currencies
 from app.core.config import settings
 from app.services.paper_worker import PaperWorker
 
@@ -16,6 +17,7 @@ from app.services.paper_worker import PaperWorker
 async def lifespan(app: FastAPI):
     if settings.database_auto_setup and not settings.vercel:
         Base.metadata.create_all(bind=engine)
+        migrate_currencies(engine)
         protect_private_tables(engine)
     worker = PaperWorker()
     app.state.paper_worker = worker if settings.embedded_worker_enabled else None

@@ -8,6 +8,7 @@ from app.models.enums import OrderSide, OrderStatus, OrderType
 from app.schemas.orders import OrderCreate
 from app.services.pricing import get_execution_quote
 from app.services.positions import apply_fill
+from app.services.currencies import require_currency
 
 
 def _account(db, account_id):
@@ -58,11 +59,17 @@ def available_resources(db, account, symbol, exclude_order_id=None):
     return max(Decimal(0), Decimal(account.cash_balance) - reserved_cash), max(Decimal(0), owned - reserved_shares)
 
 
-def _check(db, account, symbol, side, qty, price, exclude=None):
+def _check(db, account, symbol, side, qty, price, exclude=None, quote=None):
+    currency = require_currency(db, account, quote if quote is not None else get_execution_quote(db, symbol))
     if not price.is_finite() or price <= 0:
         raise ValueError("A valid market price is needed before trading.")
-    if side == OrderSide.BUY and qty * price < Decimal("0.01"):
-        raise ValueError("The trade value must be at least $0.01. Increase the amount or shares.")
+    if currency == 'VND' and qty != qty.to_integral_value():
+        raise ValueError('Vietnamese stocks use whole shares. Enter a whole number of shares.')
+    if currency == 'VND' and price != price.to_integral_value():
+        raise ValueError('Enter a price in whole VND.')
+    minimum = Decimal('1') if currency == 'VND' else Decimal('0.01')
+    if side == OrderSide.BUY and qty * price < minimum:
+        raise ValueError(f'The trade value must be at least {minimum} {currency}. Increase the amount or shares.')
     cash, shares = available_resources(db, account, symbol, exclude)
     if side == OrderSide.BUY and qty * price > cash:
         raise ValueError("Insufficient cash balance. Reduce the amount or cancel an open buy order.")
@@ -73,7 +80,7 @@ def _check(db, account, symbol, side, qty, price, exclude=None):
 def _fill(db, account, order, quote):
     price = Decimal(quote.close)
     qty = Decimal(order.quantity) - Decimal(order.filled_quantity or 0)
-    _check(db, account, order.symbol, order.side, qty, price, order.id)
+    _check(db, account, order.symbol, order.side, qty, price, order.id, quote=quote)
     cash_before = Decimal(account.cash_balance)
     apply_fill(db, account, order.symbol, order.side, qty, price)
     db.add(ExecutionDetail(order_id=order.id, quote_timestamp=quote.timestamp, quote_price=price,
@@ -106,7 +113,7 @@ def place_order(db: Session, order_in: OrderCreate, preview=None, execution_quot
         if order_in.order_type == OrderType.LIMIT and order_in.limit_price is None:
             raise ValueError("Enter a limit price for this order.")
         price = Decimal(order_in.limit_price) if order_in.order_type == OrderType.LIMIT else mark
-        _check(db, account, symbol, order_in.side, qty, price)
+        _check(db, account, symbol, order_in.side, qty, price, quote=quote)
         order = Order(account_id=account.id, symbol=symbol, side=order_in.side,
                       order_type=order_in.order_type, quantity=qty, limit_price=order_in.limit_price,
                       status=OrderStatus.PENDING, filled_quantity=0)

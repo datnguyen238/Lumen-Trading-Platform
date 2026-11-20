@@ -7,6 +7,7 @@ from typing import Optional
 class PriceBarRead(BaseModel):
     id: int
     symbol: str
+    currency: str | None = None
     timestamp: datetime
     open: Decimal
     high: Decimal

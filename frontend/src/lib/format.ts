@@ -1,10 +1,12 @@
-export function money(value: unknown, digits = 2) {
+export function money(value: unknown, digits?: number, currency: string | null = "USD") {
   if (value === null || value === undefined || value === "") return "—";
   const number = Number(value);
-  return Number.isFinite(number) ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(number) : "—";
+  if (!Number.isFinite(number)) return "—";
+  if (!currency || !/^[A-Z]{3}$/.test(currency)) return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: digits ?? 6 }).format(number)}${currency ? ` ${currency}` : ""}`;
+  return new Intl.NumberFormat("en-US", { style: "currency", currency, ...(digits === undefined ? {} : { minimumFractionDigits: digits, maximumFractionDigits: digits }) }).format(number);
 }
 export function quantity(value: unknown) { return new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(Number(value) || 0); }
-export function signedMoney(value: unknown) { const number = Number(value); return `${number > 0 ? "+" : ""}${money(number)}`; }
+export function signedMoney(value: unknown, currency: string | null = "USD") { if (value == null || value === "") return "—"; const number = Number(value); return `${number > 0 ? "+" : ""}${money(number, undefined, currency)}`; }
 export function percent(value: number, signed = false) { return Number.isFinite(value) ? `${signed && value > 0 ? "+" : ""}${value.toFixed(2)}%` : "—"; }
 export function timestamp(value?: string | null) {
   if (!value) return "Time unavailable";

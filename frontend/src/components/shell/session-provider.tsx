@@ -1,8 +1,8 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, ApiError, setCsrfToken } from "@/lib/api";
-import type { AuthRead, UserRead } from "@/lib/types";
-export type RememberedAccount = { id: number; userId: number; name: string };
+import type { AccountCurrency, AuthRead, UserRead } from "@/lib/types";
+export type RememberedAccount = { id: number; userId: number; name: string; currency: AccountCurrency };
 type Session = {
   user: UserRead | null; userId: number | null; accountId: number | null;
   accounts: RememberedAccount[]; ready: boolean; error: string | null;
@@ -27,7 +27,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const authenticate = useCallback((data: AuthRead) => {
     generation.current++;
     setCsrfToken(data.csrf_token); setUser(data.user);
-    const owned = data.accounts.map(a => ({ id: a.id, userId: a.user_id, name: a.name }));
+    const owned = data.accounts.map(a => ({ id: a.id, userId: a.user_id, name: a.name, currency: a.currency }));
     setAccounts(owned);
     let remembered = 0;
     try { remembered = Number(localStorage.getItem(`lumen.account.${data.user.id}`)); } catch {}
@@ -40,7 +40,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const data = await api.me();
       if (started !== generation.current) return;
       authenticate(data);
-      if (selectId && data.accounts.some(a => a.id === selectId)) setAccountId(selectId);
+      if (selectId && data.accounts.some(a => a.id === selectId)) {
+        setAccountId(selectId);
+        try { localStorage.setItem(`lumen.account.${data.user.id}`, String(selectId)); } catch {}
+      }
     }
     catch (failure) {
       if (started !== generation.current) return;

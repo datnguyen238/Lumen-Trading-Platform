@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine
 from app.models import models  # noqa: F401
+from app.db.migrations import missing_currency_columns
 
 
 def main():
@@ -16,6 +17,9 @@ def main():
         missing = set(Base.metadata.tables) - set(inspect(connection).get_table_names())
         if missing:
             failures.append('Missing tables: ' + ', '.join(sorted(missing)) + '. Run python -m app.db.bootstrap.')
+        columns = missing_currency_columns(connection)
+        if columns:
+            failures.append('Missing currency columns: ' + ', '.join(columns) + '. Run python -m app.db.bootstrap.')
         if connection.dialect.name == 'postgresql':
             from app.db.privacy import PRIVATE_TABLES
             for name in PRIVATE_TABLES:

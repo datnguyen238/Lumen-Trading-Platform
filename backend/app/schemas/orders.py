@@ -30,6 +30,7 @@ class OrderRead(BaseModel):
     id: int
     account_id: int
     symbol: str
+    currency: str
     side: OrderSide
     order_type: OrderType
     quantity: Decimal
@@ -55,9 +56,9 @@ class PreviewRequest(BaseModel):
     @model_validator(mode="after")
     def check_order(self):
         if (self.quantity is None) == (self.notional is None):
-            raise ValueError("Enter either a dollar amount or a number of shares.")
+            raise ValueError("Enter either an amount or a number of shares.")
         if self.notional is not None and (self.side != OrderSide.BUY or self.order_type != OrderType.MARKET):
-            raise ValueError("Dollar amounts are available for market buys. Use shares for this order.")
+            raise ValueError("Amount entry is available for market buys. Use shares for this order.")
         if self.order_type == OrderType.LIMIT and self.limit_price is None:
             raise ValueError("Enter your limit price.")
         if self.order_type == OrderType.MARKET and self.limit_price is not None:
@@ -69,6 +70,7 @@ class PreviewRead(BaseModel):
     id: str
     account_id: int
     symbol: str
+    currency: str
     side: OrderSide
     order_type: OrderType
     quantity: Decimal

@@ -1,5 +1,6 @@
 import type {
   AuthRead,
+  AccountCurrency,
   AccountOverview,
   PreviewRequest,
   OrderPreview,
@@ -79,7 +80,7 @@ export const api = {
   removeAsset: (symbol: string) => request<string[]>(`/watchlist/${encodeURIComponent(symbol)}`, { method: "DELETE" }),
   me: () => request<AuthRead>("/auth/me"),
   login: (body: { email: string; password: string }) => request<AuthRead>("/auth/login", { method: "POST", body: JSON.stringify(body) }),
-  signup: (body: { email: string; password: string; full_name: string }) => request<AuthRead>("/auth/signup", { method: "POST", body: JSON.stringify(body) }),
+  signup: (body: { email: string; password: string; full_name: string; currency: AccountCurrency }) => request<AuthRead>("/auth/signup", { method: "POST", body: JSON.stringify(body) }),
   logout: () => request("/auth/logout", { method: "POST" }),
   placeOrder: (body: OrderRequest) => request<OrderRead>("/orders/", { method: "POST", body: JSON.stringify(body) }),
   processOrders: (accountId: number) => request(`/orders/process-pending?account_id=${accountId}`, { method: "POST" }),
@@ -92,7 +93,7 @@ export const api = {
   getUser: (userId: number) => request<UserRead>(`/users/${userId}`),
 
   // Accounts
-  createAccount: (body: { user_id: number; name: string }) =>
+  createAccount: (body: { user_id: number; name: string; currency: AccountCurrency }) =>
     request<AccountRead>("/accounts/", {
       method: "POST",
       body: JSON.stringify(body),

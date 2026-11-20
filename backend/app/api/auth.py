@@ -16,6 +16,7 @@ from app.models.models import Account, AuthSession, User, UserCredential
 from app.schemas.accounts import AccountRead
 from app.schemas.users import UserRead
 from app.services.auth import COOKIE_NAME, current_session, hash_password, token_hash, verify_password
+from app.services.currencies import AccountCurrency, STARTING_CASH
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 _attempts: dict[str, deque] = defaultdict(deque)
@@ -32,6 +33,7 @@ class Login(BaseModel):
 class Signup(Login):
     password: str = Field(min_length=8, max_length=128)
     full_name: str = Field(min_length=1, max_length=100)
+    currency: AccountCurrency = 'USD'
 
 
 class SessionRead(BaseModel):
@@ -96,7 +98,7 @@ def signup(body: Signup, request: Request, response: Response, db: Session = Dep
         db.add(user)
         db.flush()
         db.add(UserCredential(user_id=user.id, password_hash=hash_password(body.password)))
-        db.add(Account(user_id=user.id, name="My portfolio", cash_balance=100000))
+        db.add(Account(user_id=user.id, name="My portfolio", currency=body.currency, cash_balance=STARTING_CASH[body.currency]))
         return _start(db, user, request, response)
     except IntegrityError:
         db.rollback()

@@ -45,7 +45,7 @@ export function AssetSearch({ open, onOpenChange, query, onQueryChange, onSelect
     <CommandList aria-busy={searching || known.loading}>
       {!searching && !known.loading && !failure && <CommandEmpty>No matching stocks or funds. Try another name or ticker.</CommandEmpty>}
       <CommandGroup heading="Stocks and funds">{items.map(item => <CommandItem key={item.symbol} value={`${item.symbol} ${item.name || ""}`} onSelect={() => onSelect(item.symbol)}>
-        <AssetLogo symbol={item.symbol}/><strong>{item.symbol}</strong><span className="l-command-name">{item.name}</span><ArrowRight size={15} aria-hidden="true"/>
+        <AssetLogo symbol={item.symbol}/><strong>{item.symbol}</strong><span className="l-command-name">{item.name}</span><small className="l-search-market">{[item.exchange, item.currency].filter(Boolean).join(" · ")}</small><ArrowRight size={15} aria-hidden="true"/>
       </CommandItem>)}</CommandGroup>
       {(searching || known.loading) && <p className="l-search-feedback" role="status">Searching investments…</p>}
       {failure && <div className="l-search-feedback" role="status"><p>{failure}</p><button type="button" className="l-text-link" onClick={() => { known.reload(); setAttempt(value => value + 1); }}>Try again</button></div>}

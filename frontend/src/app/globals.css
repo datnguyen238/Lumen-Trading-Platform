@@ -230,7 +230,8 @@ html{font-size:16px;scroll-behavior:smooth}body{margin:0;font-family:var(--font-
 }
 .l-auth-form .l-form { gap: 23px; }
 .l-auth-form .l-form label { gap: 9px; font-size: .8125rem; }
-.l-auth-form .l-form input {
+.l-auth-form .l-form input,
+.l-auth-form .l-form select {
   min-height: 52px;
   padding-inline: 15px;
   border-color: var(--input);
@@ -292,4 +293,19 @@ html{font-size:16px;scroll-behavior:smooth}body{margin:0;font-family:var(--font-
 }
 @media (max-height: 700px) {
   .l-auth-main { align-items: flex-start; padding-block: 28px 40px; }
+}
+
+/* Native-currency portfolio controls. */
+.l-search-market { color: var(--muted-foreground); flex-shrink: 0; font-size: .6875rem; white-space: nowrap; }
+.l-currency-switch .l-button { margin-top: 20px; width: 100%; white-space: normal; }
+.l-quick-amounts { flex-wrap: wrap; }
+.l-account-popover button span { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 560px) { .l-search-market { max-width: 84px; white-space: normal; text-align: right; } .l-equity { white-space: normal; overflow-wrap: anywhere; font-size: clamp(1.9rem, 8.2vw, 2.625rem); } }
+
+@media (max-width: 560px) {
+  .l-summary-vnd { grid-template-columns: 1fr; gap: 20px; }
+  .l-summary-vnd .l-summary-primary { grid-column: auto; }
+  .l-summary-vnd .l-summary-secondary, .l-summary-vnd .l-summary-secondary:last-child { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; border: 0; padding: 0; }
+  .l-summary-vnd .l-summary-secondary p { flex-basis: 100%; }
+  .l-position-values { grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); }
 }

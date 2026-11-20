@@ -1,17 +1,20 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
 from decimal import Decimal
+from app.services.currencies import AccountCurrency
 
 
 class AccountCreate(BaseModel):
     user_id: int
     name: str = Field(default="My portfolio", min_length=1, max_length=80)
+    currency: AccountCurrency = 'USD'
 
 
 class AccountRead(BaseModel):
     id: int
     user_id: int
     name: str
+    currency: str
     cash_balance: Decimal
     created_at: datetime
 
@@ -22,6 +25,7 @@ class PositionRead(BaseModel):
     id: int
     account_id: int
     symbol: str
+    currency: str
     quantity: Decimal
     average_price: Decimal
 

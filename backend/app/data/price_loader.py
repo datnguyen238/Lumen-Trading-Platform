@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models.models import PriceBar
 from app.core.config import settings
+from app.services.currencies import known_currency, normalize_currency
 
 
 if settings.vercel:
@@ -22,6 +23,15 @@ if settings.vercel:
 BINANCE_BASE_URL = "https://api.binance.com"
 _STOCK_CACHE: dict[str, tuple[datetime, dict]] = {}
 _STOCK_TTL_SECONDS = 300
+
+
+def _market_metadata(ticker, symbol: str) -> dict:
+    try:
+        metadata = ticker.get_history_metadata() or {}
+    except Exception:
+        metadata = {}
+    return {'currency': normalize_currency(metadata.get('currency')) or known_currency(symbol),
+            'exchange': metadata.get('exchangeName')}
 
 
 def load_crypto_klines(db: Session, symbol: str, interval: str = "1d", limit: int = 500) -> int:
@@ -36,6 +46,7 @@ def load_crypto_klines(db: Session, symbol: str, interval: str = "1d", limit: in
 
         bar = PriceBar(
             symbol=symbol,
+            currency='USDT' if symbol.upper().endswith('USDT') else None,
             timestamp=ts,
             open=Decimal(k[1]),
             high=Decimal(k[2]),
@@ -69,16 +80,19 @@ def load_stock_history(db: Session, symbol: str, start: date, end: date, interva
         return 0
 
     yf_symbol = _to_yfinance_symbol(symbol)
-    df = yf.download(
-        yf_symbol,
+    ticker = yf.Ticker(yf_symbol)
+    df = ticker.history(
         start=start,
         end=end + timedelta(days=1),
         interval=interval,
-        progress=False,
         auto_adjust=False,
+        timeout=10,
     )
     if df.empty:
         return 0
+    metadata = _market_metadata(ticker, symbol)
+    from app.services.price_refresh import update_instrument_metadata
+    update_instrument_metadata(db, symbol, metadata)
 
     if hasattr(df.columns, "levels"):
         df.columns = df.columns.get_level_values(0)
@@ -104,7 +118,7 @@ def load_stock_history(db: Session, symbol: str, start: date, end: date, interva
 
         from app.services.price_refresh import _upsert_bar
         try:
-            _upsert_bar(db, symbol, ts, open_, high_, low_, close_, volume_)
+            _upsert_bar(db, symbol, ts, open_, high_, low_, close_, volume_, currency=metadata['currency'])
         except ValueError:
             continue
 
@@ -126,12 +140,13 @@ def fetch_latest_stock_bar_yfinance(symbol: str, force_refresh: bool = False) ->
             return cached_item
 
     yf_symbol = _to_yfinance_symbol(symbol)
+    ticker = yf.Ticker(yf_symbol)
 
     # Prefer most-recent intraday bar when available for better UX on quote refresh.
     # Falls back to daily bar for symbols/markets with limited intraday access.
     latest = None
     try:
-        intraday = yf.Ticker(yf_symbol).history(period="2d", interval="1m", auto_adjust=False, prepost=False, timeout=10)
+        intraday = ticker.history(period="2d", interval="1m", auto_adjust=False, prepost=False, timeout=10)
         if not intraday.empty:
             latest = intraday.iloc[-1]
     except Exception:
@@ -141,12 +156,10 @@ def fetch_latest_stock_bar_yfinance(symbol: str, force_refresh: bool = False) ->
         end = date.today()
         start = end - timedelta(days=7)
         try:
-            df = yf.download(
-                yf_symbol,
+            df = ticker.history(
                 start=start,
                 end=end + timedelta(days=1),
                 interval="1d",
-                progress=False,
                 auto_adjust=False,
                 timeout=10,
             )
@@ -184,6 +197,7 @@ def fetch_latest_stock_bar_yfinance(symbol: str, force_refresh: bool = False) ->
         "close": c,
         "volume": v if _is_finite_number(v) else None,
         "source": "yfinance",
+        **_market_metadata(ticker, symbol),
     }
     _STOCK_CACHE[symbol] = (datetime.utcnow(), item)
     return item

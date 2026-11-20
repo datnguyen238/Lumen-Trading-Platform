@@ -5,6 +5,13 @@ from sqlalchemy.orm import Session
 
 from app.data.price_loader import fetch_latest_stock_bar_yfinance
 from app.models.models import PriceBar, Symbol
+from app.services.currencies import known_currency, normalize_currency
+
+
+def update_instrument_metadata(db: Session, symbol: str, metadata: dict):
+    values = {key: metadata[key] for key in ('currency', 'exchange') if metadata.get(key)}
+    if values:
+        db.query(Symbol).filter(Symbol.symbol == symbol).update(values, synchronize_session=False)
 
 
 def _upsert_bar(
@@ -16,6 +23,7 @@ def _upsert_bar(
     low_v: str | float | int,
     close_v: str | float | int,
     volume_v: str | float | int | None,
+    *, currency: str | None = None,
 ) -> PriceBar:
     try:
         o = Decimal(str(open_v))
@@ -38,11 +46,12 @@ def _upsert_bar(
         from sqlalchemy.dialects.sqlite import insert
     else:
         raise ValueError("Unsupported price-storage database")
-    values = dict(symbol=symbol, timestamp=ts, open=o, high=h, low=l, close=c, volume=v)
+    values = dict(symbol=symbol, timestamp=ts, open=o, high=h, low=l, close=c, volume=v,
+                  currency=normalize_currency(currency) or known_currency(symbol))
     statement = insert(PriceBar).values(**values)
     statement = statement.on_conflict_do_update(
         index_elements=["symbol", "timestamp"],
-        set_={name: getattr(statement.excluded, name) for name in ("open", "high", "low", "close", "volume")},
+        set_={name: getattr(statement.excluded, name) for name in ("open", "high", "low", "close", "volume", "currency")},
     ).returning(PriceBar)
     return db.execute(statement, execution_options={"populate_existing": True}).scalar_one()
 
@@ -63,6 +72,7 @@ def refresh_watchlist_db(db: Session, limit: int = 50) -> tuple[int, int, int]:
         if not item:
             skipped += 1
             continue
+        update_instrument_metadata(db, sym.symbol, item)
         _upsert_bar(
             db,
             sym.symbol,
@@ -72,6 +82,7 @@ def refresh_watchlist_db(db: Session, limit: int = 50) -> tuple[int, int, int]:
             item["low"],
             item["close"],
             item.get("volume"),
+            currency=item.get('currency'),
         )
         refreshed += 1
 

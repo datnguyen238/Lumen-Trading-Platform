@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.models import User, Account, Position
 from app.schemas.accounts import AccountCreate, AccountRead, PositionRead
+from app.services.currencies import STARTING_CASH
 
 router = APIRouter()
 
@@ -14,7 +15,7 @@ def create_account(account_in: AccountCreate, db: Session = Depends(get_db), use
     if account_in.user_id != user.id:
         raise HTTPException(403, "You can only create your own portfolio.")
 
-    account = Account(user_id=account_in.user_id, name=account_in.name)
+    account = Account(user_id=account_in.user_id, name=account_in.name, currency=account_in.currency, cash_balance=STARTING_CASH[account_in.currency])
     db.add(account)
     db.commit()
     db.refresh(account)
