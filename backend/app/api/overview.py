@@ -9,6 +9,7 @@ from app.schemas.trades import TradeRead
 from app.schemas.summary import AccountSummary
 from app.services.auth import current_user, owned_account
 from app.services.portfolio import build_summary
+from app.services.fx import refresh_portfolio_fx
 
 router = APIRouter()
 
@@ -25,6 +26,10 @@ class Overview(BaseModel):
 @router.get('/accounts/{account_id}/overview', response_model=Overview)
 def overview(account_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     owned_account(account_id, db, user)
+    try:
+        refresh_portfolio_fx(db, account_id)
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from None
     # Execution locks the same account, so balances and fills cannot straddle a trade.
     account = db.query(Account).filter(Account.id == account_id).populate_existing().with_for_update(read=True).one()
     positions = db.query(Position).filter(Position.account_id == account_id).order_by(Position.symbol).all()

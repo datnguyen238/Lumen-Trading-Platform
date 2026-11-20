@@ -309,3 +309,55 @@ html{font-size:16px;scroll-behavior:smooth}body{margin:0;font-family:var(--font-
   .l-summary-vnd .l-summary-secondary p { flex-basis: 100%; }
   .l-position-values { grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); }
 }
+
+/* Portfolio creation is a focused dialog, separate from the authentication form. */
+.l-portfolio-dialog[data-slot=dialog-content] {
+  display: block;
+  width: calc(100% - 32px);
+  max-width: 440px;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 28px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 24px 72px #211f1b29;
+  scrollbar-width: thin;
+  scrollbar-color: var(--input) transparent;
+}
+.l-portfolio-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.l-portfolio-dialog-header [data-slot=dialog-title] { margin: 0; font-size: 1.375rem; font-weight: 600; line-height: 1.25; letter-spacing: -.025em; outline: none; }
+.l-portfolio-close { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; margin: -8px -8px -8px 0; border: 0; border-radius: 8px; background: transparent; color: var(--muted-foreground); }
+.l-portfolio-close:hover { background: var(--secondary); color: var(--foreground); }
+.l-portfolio-close:disabled { opacity: .5; }
+.l-portfolio-form, .l-portfolio-fields { display: grid; gap: 24px; }
+.l-portfolio-fields, .l-portfolio-currency { min-width: 0; margin: 0; padding: 0; border: 0; }
+.l-portfolio-name { display: grid; gap: 8px; font-size: .8125rem; font-weight: 550; }
+.l-portfolio-name input { width: 100%; min-width: 0; height: 48px; border: 1px solid var(--input); border-radius: 8px; padding: 0 13px; background: var(--card); color: var(--foreground); font-size: 1rem; font-weight: 400; }
+.l-portfolio-name input:focus-visible { border-color: var(--foreground); outline: 2px solid var(--ring); outline-offset: 3px; }
+.l-portfolio-currency legend { margin-bottom: 8px; padding: 0; font-size: .8125rem; font-weight: 550; }
+.l-currency-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.l-currency-option { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; min-height: 76px; padding: 13px; border: 1px solid var(--input); border-radius: 8px; cursor: pointer; }
+.l-currency-option:has(:checked) { border-color: var(--foreground); background: #f2ede3; }
+.l-currency-option:has(:focus-visible) { outline: 2px solid var(--ring); outline-offset: 3px; }
+.l-currency-option:hover { background: var(--secondary); }
+.l-currency-option > span { display: grid; gap: 3px; min-width: 0; }
+.l-currency-option strong { font-size: .875rem; font-weight: 600; }
+.l-currency-option small { color: var(--muted-foreground); font-size: .75rem; line-height: 1.4; overflow-wrap: anywhere; }
+.l-currency-option input[type=radio] { flex: 0 0 16px; width: 16px; height: 16px; min-height: 0; margin: 0; padding: 0; accent-color: var(--foreground); outline: none; }
+.l-portfolio-fields:disabled { opacity: .6; }
+.l-portfolio-fields:disabled .l-currency-option { cursor: default; }
+.l-portfolio-submit { width: 100%; min-height: 48px; font-size: .875rem; }
+.l-portfolio-form .l-error { margin: 0; align-items: flex-start; padding: 13px; font-size: .8125rem; }
+.l-portfolio-form .l-error p { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+  .l-portfolio-dialog[data-slot=dialog-content] { padding: 24px; }
+  .l-currency-options { gap: 8px; }
+  .l-currency-option { padding: 12px; }
+}
+@media (max-width: 360px) {
+  .l-currency-options { grid-template-columns: 1fr; }
+  .l-currency-option { min-height: 64px; }
+}

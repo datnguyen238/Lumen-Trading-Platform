@@ -9,6 +9,7 @@ from app.schemas.orders import OrderCreate
 from app.services.pricing import get_execution_quote
 from app.services.positions import apply_fill
 from app.services.currencies import require_currency
+from app.services.fx import get_fx_quote, money_amount, refresh_order_fx
 
 
 def _account(db, account_id):
@@ -51,7 +52,7 @@ def available_resources(db, account, symbol, exclude_order_id=None):
             continue
         remaining = Decimal(item.quantity) - Decimal(item.filled_quantity)
         if item.side == OrderSide.BUY:
-            reserved_cash += remaining * Decimal(item.limit_price or 0)
+            reserved_cash += money_amount(remaining * Decimal(item.limit_price or 0) * Decimal(item.fx_rate), account.currency)
         elif item.symbol == symbol:
             reserved_shares += remaining
     pos = db.query(Position).filter(Position.account_id == account.id, Position.symbol == symbol).populate_existing().first()
@@ -59,7 +60,7 @@ def available_resources(db, account, symbol, exclude_order_id=None):
     return max(Decimal(0), Decimal(account.cash_balance) - reserved_cash), max(Decimal(0), owned - reserved_shares)
 
 
-def _check(db, account, symbol, side, qty, price, exclude=None, quote=None):
+def _check(db, account, symbol, side, qty, price, exclude=None, quote=None, fx=None):
     currency = require_currency(db, account, quote if quote is not None else get_execution_quote(db, symbol))
     if not price.is_finite() or price <= 0:
         raise ValueError("A valid market price is needed before trading.")
@@ -67,26 +68,36 @@ def _check(db, account, symbol, side, qty, price, exclude=None, quote=None):
         raise ValueError('Vietnamese stocks use whole shares. Enter a whole number of shares.')
     if currency == 'VND' and price != price.to_integral_value():
         raise ValueError('Enter a price in whole VND.')
-    minimum = Decimal('1') if currency == 'VND' else Decimal('0.01')
-    if side == OrderSide.BUY and qty * price < minimum:
-        raise ValueError(f'The trade value must be at least {minimum} {currency}. Increase the amount or shares.')
+    fx = fx or get_fx_quote(db, currency, account.currency)
+    total = money_amount(qty * price * fx.rate, account.currency)
+    minimum = Decimal('1') if account.currency == 'VND' else Decimal('0.01')
+    if side == OrderSide.BUY and total < minimum:
+        raise ValueError(f'The trade value must be at least {minimum} {account.currency}. Increase the amount or shares.')
     cash, shares = available_resources(db, account, symbol, exclude)
-    if side == OrderSide.BUY and qty * price > cash:
+    if side == OrderSide.BUY and total > cash:
         raise ValueError("Insufficient cash balance. Reduce the amount or cancel an open buy order.")
     if side == OrderSide.SELL and qty > shares:
         raise ValueError("Insufficient position quantity. Reduce the shares or cancel an open sell order.")
+    return fx
 
 
 def _fill(db, account, order, quote):
     price = Decimal(quote.close)
     qty = Decimal(order.quantity) - Decimal(order.filled_quantity or 0)
-    _check(db, account, order.symbol, order.side, qty, price, order.id, quote=quote)
+    native = require_currency(db, account, quote)
+    if (order.native_currency or account.currency) != native:
+        raise ValueError('The investment currency changed. Cancel this order and review it again.')
+    fx = _check(db, account, order.symbol, order.side, qty, price, order.id, quote=quote)
+    total = money_amount(qty * price * fx.rate, account.currency)
     cash_before = Decimal(account.cash_balance)
-    apply_fill(db, account, order.symbol, order.side, qty, price)
+    apply_fill(db, account, order.symbol, order.side, qty, price * fx.rate)
+    snapshot = dict(native_currency=native, fx_rate=fx.rate, fx_timestamp=fx.timestamp, fx_source=fx.source)
     db.add(ExecutionDetail(order_id=order.id, quote_timestamp=quote.timestamp, quote_price=price,
-                           cash_before=cash_before, cash_after=account.cash_balance, fees=0))
+                           cash_before=cash_before, cash_after=account.cash_balance, fees=0, account_value=total, **snapshot))
     db.add(Trade(account_id=account.id, order_id=order.id, symbol=order.symbol,
-                 side=order.side, quantity=qty, price=price))
+                 side=order.side, quantity=qty, price=price, account_value=total, **snapshot))
+    for key, value in snapshot.items():
+        setattr(order, key, value)
     order.filled_quantity = order.quantity
     order.avg_fill_price = price
     order.status = OrderStatus.FILLED
@@ -113,10 +124,12 @@ def place_order(db: Session, order_in: OrderCreate, preview=None, execution_quot
         if order_in.order_type == OrderType.LIMIT and order_in.limit_price is None:
             raise ValueError("Enter a limit price for this order.")
         price = Decimal(order_in.limit_price) if order_in.order_type == OrderType.LIMIT else mark
-        _check(db, account, symbol, order_in.side, qty, price, quote=quote)
+        fx = _check(db, account, symbol, order_in.side, qty, price, quote=quote)
+        native = require_currency(db, account, quote)
         order = Order(account_id=account.id, symbol=symbol, side=order_in.side,
                       order_type=order_in.order_type, quantity=qty, limit_price=order_in.limit_price,
-                      status=OrderStatus.PENDING, filled_quantity=0)
+                      status=OrderStatus.PENDING, filled_quantity=0, native_currency=native,
+                      fx_rate=fx.rate, fx_timestamp=fx.timestamp, fx_source=fx.source)
         db.add(order)
         db.flush()
         crosses = order.side == OrderSide.BUY and mark <= price or order.side == OrderSide.SELL and mark >= price
@@ -160,6 +173,13 @@ def process_pending_limit_orders(db: Session, symbol: str | None = None, limit: 
         query = query.filter(Order.account_id == account_id)
     orders = [(o.id, o.account_id) for o in query.order_by(Order.account_id, Order.created_at, Order.id).limit(max(1, min(limit, 500))).all()]
     filled = 0
+    if orders:
+        refreshes = [(owner, db.get(Order, order_id).symbol) for order_id, owner in orders]
+        for owner, investment in dict.fromkeys(refreshes):
+            try:
+                refresh_order_fx(db, owner, investment)
+            except ValueError:
+                db.rollback()
     for order_id, owner in orders:
         try:
             # A rejected fill must roll back every cash/position mutation for that order.

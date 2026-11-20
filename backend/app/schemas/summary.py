@@ -1,9 +1,15 @@
 from pydantic import BaseModel
 from decimal import Decimal
 from typing import Dict
+from datetime import datetime
 
 
 class SymbolPnL(BaseModel):
+    native_currency: str
+    native_mark_price: Decimal
+    fx_rate: Decimal
+    fx_timestamp: datetime | None = None
+    fx_source: str
     symbol: str
     currency: str
     quantity: Decimal

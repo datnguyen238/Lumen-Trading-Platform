@@ -6,6 +6,12 @@ export function money(value: unknown, digits?: number, currency: string | null =
   return new Intl.NumberFormat("en-US", { style: "currency", currency, ...(digits === undefined ? {} : { minimumFractionDigits: digits, maximumFractionDigits: digits }) }).format(number);
 }
 export function quantity(value: unknown) { return new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(Number(value) || 0); }
+export function exchangeRate(value: unknown, from: string, to: string) {
+  const rate = Number(value);
+  if (!(rate > 0) || !Number.isFinite(rate)) return "Rate unavailable";
+  const inverse = to === "USD" && from !== "USD";
+  return `1 ${inverse ? to : from} ≈ ${new Intl.NumberFormat("en-US", { maximumFractionDigits: 6 }).format(inverse ? 1 / rate : rate)} ${inverse ? from : to}`;
+}
 export function signedMoney(value: unknown, currency: string | null = "USD") { if (value == null || value === "") return "—"; const number = Number(value); return `${number > 0 ? "+" : ""}${money(number, undefined, currency)}`; }
 export function percent(value: number, signed = false) { return Number.isFinite(value) ? `${signed && value > 0 ? "+" : ""}${value.toFixed(2)}%` : "—"; }
 export function timestamp(value?: string | null) {

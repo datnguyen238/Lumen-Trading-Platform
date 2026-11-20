@@ -40,7 +40,7 @@ def confirm(client, response):
     return result.json()
 
 
-def test_currency_portfolios_are_independent_and_survive_login(client, db_session):
+def test_base_currency_is_immutable_and_survives_login(client, db_session):
     data = vnd_signup(client)
     vnd = data['accounts'][0]
     assert vnd['currency'] == 'VND' and Decimal(vnd['cash_balance']) == 1000000000
@@ -101,7 +101,7 @@ def test_vnd_rejects_fractional_units_and_underfunded_share_budget(client, db_se
     assert db_session.get(Account, account_id).cash_balance == 1000000000
 
 
-def test_currency_mismatch_cannot_preview_place_or_worker_fill(client, db_session):
+def test_missing_fx_cannot_preview_place_or_worker_fill(client, db_session):
     account_id = signup(client)['accounts'][0]['id']
     quote(db_session)
     for payload in ({'quantity': 1}, {'quantity': 1, 'order_type': 'LIMIT', 'limit_price': 50000}):

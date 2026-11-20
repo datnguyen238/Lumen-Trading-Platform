@@ -10,6 +10,7 @@ from app.schemas.orders import OrderCreate, PreviewRead, PreviewRequest
 from app.services.execution import _account, _check, available_resources, place_order
 from app.services.pricing import get_execution_quote
 from app.services.currencies import require_currency, share_step
+from app.services.fx import get_fx_quote, money_amount
 
 
 def utcnow():
@@ -25,29 +26,33 @@ def create_preview(db: Session, request: PreviewRequest) -> PreviewRead:
     quote = get_execution_quote(db, symbol)
     account = _account(db, request.account_id)
     currency = require_currency(db, account, quote)
-    if currency == 'VND' and request.notional is not None and request.notional != request.notional.to_integral_value():
+    fx = get_fx_quote(db, currency, account.currency)
+    if account.currency == 'VND' and request.notional is not None and request.notional != request.notional.to_integral_value():
         raise ValueError('Enter an amount in whole VND.')
     price = Decimal(request.limit_price) if request.order_type == OrderType.LIMIT else Decimal(quote.close)
-    qty = _shares(request.notional, price, currency) if request.notional is not None else request.quantity
+    qty = _shares(request.notional, price * fx.rate, currency) if request.notional is not None else request.quantity
     if qty <= 0:
         raise ValueError('Choose an amount that buys at least one share.' if currency == 'VND' else 'Choose an amount that buys at least 0.0001 shares.')
-    _check(db, account, symbol, request.side, qty, price, quote=quote)
+    _check(db, account, symbol, request.side, qty, price, quote=quote, fx=fx)
     cash, shares = available_resources(db, account, symbol)
     position = db.query(Position).filter(Position.account_id == account.id, Position.symbol == symbol).first()
     owned = Decimal(position.quantity) if position else Decimal(0)
     cash_before = Decimal(account.cash_balance)
-    total = (qty * price).quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP)
+    total = money_amount(qty * price * fx.rate, account.currency)
     direction = 1 if request.side == OrderSide.BUY else -1
     preview = OrderPreview(id=secrets.token_hex(24), account_id=account.id, symbol=symbol,
         side=request.side, order_type=request.order_type, quantity=qty, notional=request.notional,
         limit_price=request.limit_price, quoted_price=price, quote_timestamp=quote.timestamp,
-        expires_at=utcnow() + timedelta(seconds=settings.preview_expiry_seconds))
+        expires_at=utcnow() + timedelta(seconds=settings.preview_expiry_seconds), native_currency=currency,
+        fx_rate=fx.rate, fx_timestamp=fx.timestamp, fx_source=fx.source)
     db.add(preview)
     db.commit()
     explanation = ('A market order practices buying or selling at the latest available price. Amount-based buys never exceed your chosen budget.'
         if request.order_type == OrderType.MARKET else
         'A limit buy fills at your price or lower; a limit sell fills at your price or higher. Cash or shares are reserved until filled or canceled.')
-    return PreviewRead(id=preview.id, account_id=account.id, symbol=symbol, currency=currency, side=request.side,
+    return PreviewRead(id=preview.id, account_id=account.id, symbol=symbol, currency=currency,
+        account_currency=account.currency, fx_rate=fx.rate, fx_timestamp=fx.timestamp, fx_source=fx.source,
+        native_total=qty * price, side=request.side,
         order_type=request.order_type, quantity=qty, notional=request.notional, limit_price=request.limit_price,
         estimated_price=price, estimated_total=total, quote_timestamp=quote.timestamp, expires_at=preview.expires_at,
         cash_before=cash_before, cash_after=cash_before-direction*total, shares_before=owned,
@@ -68,7 +73,10 @@ def confirm_preview(db: Session, preview_id: str, account_id: int) -> Order:
             raise ValueError('This trade review expired. Edit your order and review the latest price again.')
         quote = get_execution_quote(db, preview.symbol)
         currency = require_currency(db, account, quote)
-        qty = _shares(preview.notional, quote.close, currency) if preview.notional is not None else Decimal(preview.quantity)
+        if currency != (preview.native_currency or account.currency):
+            raise ValueError('The investment currency changed. Review your order again.')
+        fx = get_fx_quote(db, currency, account.currency)
+        qty = _shares(preview.notional, Decimal(quote.close) * fx.rate, currency) if preview.notional is not None else Decimal(preview.quantity)
         if qty <= 0:
             raise ValueError('The latest price needs a larger amount. Review your order again.')
         data = OrderCreate(account_id=account_id, symbol=preview.symbol, side=preview.side,

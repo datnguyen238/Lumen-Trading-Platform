@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     paper_worker_enabled: bool = True
     paper_worker_interval_seconds: int = 30
     paper_worker_symbol_limit: int = 30
+    fx_quote_max_age_hours: int = Field(default=72, ge=1, le=168)
     execution_quote_max_age_days: int = 7
     preview_expiry_seconds: int = 120
 

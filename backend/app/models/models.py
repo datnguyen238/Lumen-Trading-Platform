@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from sqlalchemy import (
     Integer,
     String,
@@ -59,7 +60,14 @@ class PriceBar(Base):
     )
 
 
-class Order(Base):
+class FxSnapshot:
+    native_currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    fx_rate: Mapped[Decimal] = mapped_column(Numeric(30, 18), nullable=False, default=Decimal('1'), server_default='1')
+    fx_timestamp: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    fx_source: Mapped[str] = mapped_column(String(64), nullable=False, default='same_currency', server_default='same_currency')
+
+
+class Order(FxSnapshot, Base):
     __tablename__ = "orders"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -80,14 +88,29 @@ class Order(Base):
 
     account: Mapped["Account"] = relationship(back_populates="orders")
     trades: Mapped[list["Trade"]] = relationship(back_populates="order", cascade="all, delete-orphan")
-    execution: Mapped["ExecutionDetail | None"] = relationship(uselist=False, cascade="all, delete-orphan")
+    execution: Mapped["ExecutionDetail | None"] = relationship(uselist=False, cascade="all, delete-orphan", back_populates="order")
 
     @property
     def currency(self) -> str:
+        return self.native_currency or self.account.currency
+
+    @property
+    def account_currency(self) -> str:
         return self.account.currency
 
 
-class Trade(Base):
+    @property
+    def native_total(self):
+        return Decimal(self.filled_quantity) * Decimal(self.avg_fill_price) if self.avg_fill_price is not None else None
+
+    @property
+    def account_total(self):
+        if self.execution:
+            return self.execution.account_total
+        return Decimal(self.filled_quantity) * Decimal(self.avg_fill_price) * Decimal(self.fx_rate) if self.avg_fill_price is not None else None
+
+
+class Trade(FxSnapshot, Base):
     __tablename__ = "trades"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -100,13 +123,31 @@ class Trade(Base):
     quantity: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False)
     price: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False)
     executed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    account_value: Mapped[Decimal | None] = mapped_column(Numeric(24, 4), nullable=True)
 
     account: Mapped["Account"] = relationship(back_populates="trades")
     order: Mapped["Order"] = relationship(back_populates="trades")
 
     @property
     def currency(self) -> str:
+        return self.native_currency or self.account.currency
+
+    @property
+    def account_currency(self) -> str:
         return self.account.currency
+
+
+    @property
+    def native_total(self):
+        return Decimal(self.quantity) * Decimal(self.price)
+
+    @property
+    def account_total(self):
+        return Decimal(self.account_value) if self.account_value is not None else Decimal(self.quantity) * Decimal(self.price) * Decimal(self.fx_rate)
+
+    @property
+    def account_price(self):
+        return self.account_total / Decimal(self.quantity)
 
 
 class Position(Base):
@@ -117,7 +158,7 @@ class Position(Base):
     symbol: Mapped[str] = mapped_column(String, nullable=False, index=True)
 
     quantity: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False, default=0)
-    average_price: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False, default=0)
+    average_price: Mapped[float] = mapped_column(Numeric(30, 14), nullable=False, default=0)
 
     account: Mapped["Account"] = relationship(back_populates="positions")
 
@@ -170,7 +211,7 @@ class SavedAsset(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
-class OrderPreview(Base):
+class OrderPreview(FxSnapshot, Base):
     __tablename__ = "order_previews"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), nullable=False, index=True)
@@ -186,7 +227,7 @@ class OrderPreview(Base):
     order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id"), nullable=True)
 
 
-class ExecutionDetail(Base):
+class ExecutionDetail(FxSnapshot, Base):
     __tablename__ = "execution_details"
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), primary_key=True)
     quote_timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False)
@@ -195,6 +236,24 @@ class ExecutionDetail(Base):
     cash_after: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False)
     fees: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False, default=0)
     model: Mapped[str] = mapped_column(String, nullable=False, default="last_observed_price")
+    account_value: Mapped[Decimal | None] = mapped_column(Numeric(24, 4), nullable=True)
+    order: Mapped["Order"] = relationship(back_populates="execution")
+
+    @property
+    def currency(self):
+        return self.native_currency or self.order.account.currency
+
+    @property
+    def account_currency(self):
+        return self.order.account.currency
+
+    @property
+    def account_total(self):
+        return Decimal(self.account_value) if self.account_value is not None else abs(Decimal(self.cash_after) - Decimal(self.cash_before))
+
+    @property
+    def account_price(self):
+        return self.account_total / Decimal(self.order.filled_quantity)
 
 
 class AuthRateBucket(Base):
@@ -202,3 +261,13 @@ class AuthRateBucket(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+
+
+class FxRate(Base):
+    __tablename__ = 'fx_rates'
+    from_currency: Mapped[str] = mapped_column(String(3), primary_key=True)
+    to_currency: Mapped[str] = mapped_column(String(3), primary_key=True)
+    rate: Mapped[Decimal] = mapped_column(Numeric(30, 18), nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    source: Mapped[str] = mapped_column(String(64), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)

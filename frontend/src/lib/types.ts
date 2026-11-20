@@ -1,5 +1,6 @@
 export type Health = { status: "ok" | string };
 export type AccountCurrency = "USD" | "VND";
+export type FxQuote = { from_currency: string; to_currency: string; rate: string; timestamp: string | null; source: string };
 
 export type UserRead = {
   id: number;
@@ -42,6 +43,11 @@ export type PriceBarRead = {
 
 export type OrderRead = {
   currency: string;
+  account_currency: string;
+  account_total: string | null;
+  fx_rate: string;
+  fx_timestamp: string | null;
+  fx_source: string;
   id: number;
   account_id: number;
   symbol: string;
@@ -59,6 +65,11 @@ export type OrderRead = {
 
 export type TradeRead = {
   currency: string;
+  account_currency: string;
+  account_total: string;
+  fx_rate: string;
+  fx_timestamp: string | null;
+  fx_source: string;
   id: number;
   account_id: number;
   order_id: number;
@@ -85,6 +96,9 @@ export type AccountSummary = {
     {
       symbol: string;
       currency: string;
+      native_currency: string;
+      native_mark_price: string;
+      fx_rate: string;
       quantity: string;
       avg_cost: string;
       mark_price: string;
@@ -139,6 +153,11 @@ export type AccountOverview = { account: AccountRead; positions: PositionRead[];
 export type PreviewRequest = { account_id: number; symbol: string; side: "BUY" | "SELL"; order_type: "MARKET" | "LIMIT"; quantity?: number; notional?: number; limit_price?: number };
 export type OrderPreview = {
   currency: string;
+  account_currency: string;
+  native_total: string;
+  fx_rate: string;
+  fx_timestamp: string | null;
+  fx_source: string;
   id: string; account_id: number; symbol: string; side: "BUY" | "SELL"; order_type: "MARKET" | "LIMIT";
   quantity: string; notional: string | null; limit_price: string | null; estimated_price: string; estimated_total: string;
   quote_timestamp: string; expires_at: string; cash_before: string; cash_after: string; shares_before: string; shares_after: string;

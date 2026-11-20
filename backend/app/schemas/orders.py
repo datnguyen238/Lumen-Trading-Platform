@@ -17,6 +17,13 @@ class OrderCreate(BaseModel):
 
 
 class ExecutionRead(BaseModel):
+    currency: str
+    account_currency: str
+    fx_rate: Decimal
+    fx_timestamp: datetime | None = None
+    fx_source: str
+    account_price: Decimal
+    account_total: Decimal
     quote_timestamp: datetime
     quote_price: Decimal
     cash_before: Decimal
@@ -27,6 +34,12 @@ class ExecutionRead(BaseModel):
 
 
 class OrderRead(BaseModel):
+    account_currency: str
+    fx_rate: Decimal
+    fx_timestamp: datetime | None = None
+    fx_source: str
+    native_total: Decimal | None = None
+    account_total: Decimal | None = None
     id: int
     account_id: int
     symbol: str
@@ -67,6 +80,11 @@ class PreviewRequest(BaseModel):
 
 
 class PreviewRead(BaseModel):
+    account_currency: str
+    fx_rate: Decimal
+    fx_timestamp: datetime | None = None
+    fx_source: str
+    native_total: Decimal
     id: str
     account_id: int
     symbol: str

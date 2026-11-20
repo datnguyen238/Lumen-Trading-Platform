@@ -115,7 +115,7 @@ npm run dev
 **Frontend runs at:**  
 `http://localhost:3000`
 
-Create an account with your name, email, and an 8+ character password, or sign in to resume. Choose a USD or VND portfolio. USD portfolios start with $100,000 and VND portfolios with ₫1,000,000,000 in virtual cash. These are independent practice balances, not an exchange-rate conversion. The primary workflow is **Portfolio → Discover → Research → Review paper order → Activity**.
+Create an account with your name, email, and an 8+ character password, or sign in to resume. A single portfolio can hold US and Vietnamese stocks. Choose USD or VND as the balance currency: portfolios start with $100,000 or ₫1,000,000,000 in virtual cash. Stock prices stay in their market currency; buys and sells automatically convert against the portfolio balance. The primary workflow is **Portfolio → Discover → Research → Review paper order → Activity**.
 
 For a production check, run `npm run build` with Node 22.x and `npm start`. Backend tests run with `DATABASE_URL=sqlite+pysqlite:///:memory: python -m pytest -q`; they use an isolated database.
 
@@ -144,10 +144,11 @@ The product brief is in `PRODUCT.md` and the visual system is in `DESIGN.md`. Lo
 - Legacy passwordless accounts cannot be claimed by entering their email or portfolio number; an operator must deliberately attach credentials after verifying ownership
 - Signed-in watchlists are persisted in PostgreSQL per user and sync across devices; guest watchlists stay on the browser
 - Market orders fill at the latest stored price, including outside exchange hours; review estimates can differ from the final fill
-- Market and limit orders are long-only; USD supports up to four share decimals and VND uses whole shares and whole đồng. Orders and accept a client order key for safe retries
+- Market and limit orders are long-only; USD-priced stocks support up to four share decimals and VND-priced stocks use whole shares and whole-đồng limit prices. Orders accept a client order key for safe retries
 - Trade previews and amount-to-share conversions are calculated server-side; reviews expire after two minutes, and confirming the same review is idempotent
-- Amount-based buys round shares down so the final fill never exceeds the native-currency budget; a VND budget must cover at least one whole share
-- Quote currency is stored with each price bar. Account currency is fixed at creation; previews, direct orders, worker fills, and valuations reject currency mismatches. No implicit FX conversion is performed
+- Amount-based buys round shares down so the final fill never exceeds the budget in the portfolio balance currency; Vietnamese stock orders must cover at least one whole share
+- Quote currency is stored with each price bar. The portfolio balance currency is fixed at creation, but does not restrict stock markets. USD/VND conversions use validated Yahoo FX observations; missing or stale rates block cross-currency execution instead of using invented rates. FX observations are limited to 72 hours old by default (`FX_QUOTE_MAX_AGE_HOURS`). Native limits and prices stay unchanged
+- Reviews show native trade value, the conversion rate, and the estimated balance-currency cost. Each cross-currency fill persists its applied exchange rate, source, timestamp, and converted account amount. Cash, reservations, cost basis, and realized returns use fill-time conversions; open positions use current conversion rates
 - Search accepts explicit Vietnamese listings such as `FPT.VN` and `VNM.VN`, with live chart-feed validation when company search omits the listing. `VNM` is a separate US ETF; listing currency/exchange appear in search results. Coverage depends on Yahoo; this is not a complete Vietnam exchange directory
 - Each new fill stores its source quote time, price, cash before/after, fee, and simulation model
 - Resting limits cannot fill from observations that predate the order; quotes older than seven days or more than five minutes in the future are rejected for execution

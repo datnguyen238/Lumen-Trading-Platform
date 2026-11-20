@@ -5,6 +5,13 @@ from app.models.enums import OrderSide
 
 
 class TradeRead(BaseModel):
+    account_currency: str
+    fx_rate: Decimal
+    fx_timestamp: datetime | None = None
+    fx_source: str
+    native_total: Decimal
+    account_total: Decimal
+    account_price: Decimal
     id: int
     account_id: int
     order_id: int

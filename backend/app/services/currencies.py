@@ -1,4 +1,4 @@
-"""Native-currency paper wallets. Currency conversion is never implicit."""
+"""Native quote units and portfolio base currencies."""
 from decimal import Decimal
 from typing import Literal
 
@@ -34,8 +34,6 @@ def require_currency(db, account, quote) -> str:
     currency = quote_currency(db, quote)
     if not currency:
         raise ValueError('The quote currency is unavailable. Refresh the investment before trading.')
-    if currency != account.currency:
-        raise ValueError(f'This investment is priced in {currency}. Select a {currency} portfolio to trade it; this portfolio uses {account.currency}.')
     return currency
 
 

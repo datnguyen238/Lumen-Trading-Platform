@@ -18,7 +18,7 @@ function Status({ order }: { order: OrderRead }) {
 }
 function total(order: OrderRead) {
   return Number(order.filled_quantity) > 0 && order.avg_fill_price
-    ? `${money(Number(order.avg_fill_price) * Number(order.filled_quantity), undefined, order.currency)} total`
+    ? `${money(order.account_total, undefined, order.account_currency)} total`
     : "Not filled";
 }
 

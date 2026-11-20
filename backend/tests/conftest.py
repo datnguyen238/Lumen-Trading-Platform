@@ -79,7 +79,7 @@ def account_with_price(db_session):
 
 
 @pytest.fixture()
-def client(db_session):
+def client(db_session, monkeypatch):
     from fastapi.testclient import TestClient
     from app.main import app
     from app.db.session import get_db
@@ -88,6 +88,11 @@ def client(db_session):
     # Tests exercise execution using seeded observations, with no market-data network calls.
     from app.api import orders
     from app.services.pricing import get_execution_quote
+    # FX tests seed observed rates explicitly; an absent rate is an offline outage.
+    from app.services import fx
+    def unavailable_fx():
+        raise ValueError("Offline test: no FX provider observation")
+    monkeypatch.setattr(fx, "_fetch_usd_vnd", unavailable_fx)
     original_refresh = orders.refresh_execution_quote
     orders.refresh_execution_quote = get_execution_quote
     def override():

@@ -1,12 +1,13 @@
 from sqlalchemy.orm import Session
 from decimal import Decimal
 
-from app.models.models import Account, Position, Trade, Order
+from app.models.models import Account, Position, Trade, Order, PriceBar
 from app.models.enums import OrderStatus
 from app.services.execution import available_resources
 from app.models.enums import OrderSide
 from app.schemas.summary import AccountSummary, SymbolPnL
-from app.services.pricing import get_mark_price
+from app.services.fx import get_fx_quote, money_amount
+from app.services.currencies import require_currency
 
 
 def _compute_realized_pnl(db: Session, account_id: int) -> Decimal:
@@ -23,7 +24,7 @@ def _compute_realized_pnl(db: Session, account_id: int) -> Decimal:
     for t in trades:
         symbol = str(t.symbol).strip().upper()
         qty = Decimal(t.quantity)
-        price = Decimal(t.price)
+        price = t.account_price
         s = state.setdefault(symbol, {"qty": Decimal("0"), "avg": Decimal("0")})
 
         if t.side == OrderSide.BUY:
@@ -52,7 +53,7 @@ def build_summary(db: Session, acc: Account) -> AccountSummary:
     market_value_total = Decimal("0")
     out_positions = {}
     pending = db.query(Order).filter(Order.account_id == account_id, Order.status == OrderStatus.PENDING).all()
-    reserved_cash = sum(((Decimal(o.quantity) - Decimal(o.filled_quantity)) * Decimal(o.limit_price or 0)
+    reserved_cash = sum((money_amount((Decimal(o.quantity) - Decimal(o.filled_quantity)) * Decimal(o.limit_price or 0) * Decimal(o.fx_rate), acc.currency)
                          for o in pending if o.side == OrderSide.BUY), Decimal(0))
 
     for p in positions:
@@ -61,7 +62,12 @@ def build_summary(db: Session, acc: Account) -> AccountSummary:
             continue
 
         avg_cost = Decimal(p.average_price)
-        mark = get_mark_price(db, p.symbol, acc.currency)
+        quote = db.query(PriceBar).filter(PriceBar.symbol == p.symbol).order_by(PriceBar.timestamp.desc()).first()
+        if not quote:
+            raise ValueError(f'No price data for {p.symbol}. Refresh the investment.')
+        native_currency = require_currency(db, acc, quote)
+        fx = get_fx_quote(db, native_currency, acc.currency)
+        mark = Decimal(quote.close) * fx.rate
         market_value = mark * qty
         unrealized = (mark - avg_cost) * qty
         market_value_total += market_value
@@ -69,7 +75,8 @@ def build_summary(db: Session, acc: Account) -> AccountSummary:
 
         out_positions[p.symbol] = SymbolPnL(
             symbol=p.symbol,
-            currency=acc.currency,
+            currency=acc.currency, native_currency=native_currency, native_mark_price=Decimal(quote.close),
+            fx_rate=fx.rate, fx_timestamp=fx.timestamp, fx_source=fx.source,
             quantity=qty,
             avg_cost=avg_cost,
             mark_price=mark,

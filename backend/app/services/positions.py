@@ -4,6 +4,7 @@ from sqlalchemy import and_
 
 from app.models.models import Position, Account
 from app.models.enums import OrderSide
+from app.services.fx import money_amount
 
 
 def get_or_create_position(db: Session, account_id: int, symbol: str) -> Position:
@@ -29,21 +30,22 @@ def apply_fill(db: Session, account: Account, symbol: str, side: OrderSide, qty:
 
     symbol = str(symbol).strip().upper()
     pos = get_or_create_position(db, account.id, symbol)
+    total = money_amount(qty * price, account.currency)
 
     if side == OrderSide.BUY:
         new_qty = Decimal(pos.quantity) + qty
         if new_qty > 0:
             pos.average_price = (
-                (Decimal(pos.average_price) * Decimal(pos.quantity)) + (price * qty)
+                (Decimal(pos.average_price) * Decimal(pos.quantity)) + total
             ) / new_qty
         pos.quantity = new_qty
-        account.cash_balance = Decimal(account.cash_balance) - (qty * price)
+        account.cash_balance = Decimal(account.cash_balance) - total
     else:
         current_qty = Decimal(pos.quantity)
         if current_qty < qty:
             raise ValueError("Insufficient position quantity")
         pos.quantity = current_qty - qty
-        account.cash_balance = Decimal(account.cash_balance) + (qty * price)
+        account.cash_balance = Decimal(account.cash_balance) + total
         if Decimal(pos.quantity) == 0:
             pos.average_price = Decimal("0")
 

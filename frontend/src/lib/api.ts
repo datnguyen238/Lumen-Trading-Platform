@@ -1,6 +1,7 @@
 import type {
   AuthRead,
   AccountCurrency,
+  FxQuote,
   AccountOverview,
   PreviewRequest,
   OrderPreview,
@@ -72,6 +73,7 @@ function safeJsonParse(text: string): unknown {
 }
 
 export const api = {
+  getFxQuote: (from: string, to: string) => request<FxQuote>(`/fx/quote?${new URLSearchParams({ from_currency: from, to_currency: to })}`),
   getOverview: (id: number) => request<AccountOverview>(`/accounts/${id}/overview`),
   previewOrder: (body: PreviewRequest) => request<OrderPreview>("/orders/preview", { method: "POST", body: JSON.stringify(body) }),
   confirmOrder: (previewId: string) => request<OrderRead>("/orders/confirm", { method: "POST", body: JSON.stringify({ preview_id: previewId }) }),

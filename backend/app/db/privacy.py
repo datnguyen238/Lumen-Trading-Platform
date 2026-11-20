@@ -2,7 +2,7 @@
 from sqlalchemy import text
 
 PRIVATE_TABLES = ('users', 'accounts', 'positions', 'orders', 'trades', 'user_credentials',
-                  'auth_sessions', 'order_receipts', 'order_previews', 'execution_details', 'saved_assets', 'auth_rate_buckets')
+                  'auth_sessions', 'order_receipts', 'order_previews', 'execution_details', 'saved_assets', 'auth_rate_buckets', 'fx_rates')
 
 
 def protect_private_tables(engine):
