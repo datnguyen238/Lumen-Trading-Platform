@@ -14,10 +14,10 @@ function limitPrice(value: string, currency: string) {
   return Number(price) > 0 ? price : null;
 }
 
-function dateLabel(value: string) {
-  return new Date(`${value}T00:00:00Z`).toLocaleDateString("en-US", {
+function dateLabel(start: string, end: string) {
+  return new Intl.DateTimeFormat("en-US", {
     month: "short", day: "numeric", year: "numeric", timeZone: "UTC",
-  });
+  }).formatRange(new Date(`${start}T00:00:00Z`), new Date(`${end}T00:00:00Z`));
 }
 
 export function LimitPriceReference({ symbol, currency, days, range, loading, onRetry, onChoose }: {
@@ -34,7 +34,7 @@ export function LimitPriceReference({ symbol, currency, days, range, loading, on
   return <div className="l-limit-reference" aria-label={`${period} limit price shortcuts`}>
     {loading ? <p className="l-limit-reference-caption" role="status">Loading {period} range…</p>
       : valid && range ? <>
-        <p className="l-limit-reference-caption">{period} range <span>{dateLabel(range.start_date)} – {dateLabel(range.end_date)}</span></p>
+        <p className="l-limit-reference-caption"><span>{days === 7 ? "1W" : days === 365 ? "1Y" : `${days / 30}M`} range</span><span>{dateLabel(range.start_date, range.end_date)}</span></p>
         <div className="l-limit-shortcuts">
           {([["Low", low], ["High", high]] as const).map(([label, price]) => <button key={label} type="button"
             aria-label={`Use ${period} ${label.toLowerCase()} of ${money(price, undefined, currency)} as limit price`}
