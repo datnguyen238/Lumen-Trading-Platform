@@ -41,6 +41,8 @@ export type PriceBarRead = {
   previous_timestamp?: string | null;
 };
 
+export type DailyPriceRead = PriceBarRead & { interval: "1d"; session_date: string; source: string };
+
 export type OrderRead = {
   currency: string;
   account_currency: string;

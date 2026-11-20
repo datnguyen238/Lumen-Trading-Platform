@@ -1,9 +1,12 @@
 from datetime import datetime, date, timedelta, timezone
+from collections import OrderedDict
 from decimal import Decimal
 from typing import Optional
 import math
 from pathlib import Path
 import tempfile
+from threading import Lock
+from time import monotonic
 
 import requests
 import yfinance as yf
@@ -13,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.models.models import PriceBar
 from app.core.config import settings
 from app.services.currencies import known_currency, normalize_currency
+from app.schemas.prices import DailyPriceRead
 
 
 if settings.vercel:
@@ -23,6 +27,10 @@ if settings.vercel:
 BINANCE_BASE_URL = "https://api.binance.com"
 _STOCK_CACHE: dict[str, tuple[datetime, dict]] = {}
 _STOCK_TTL_SECONDS = 300
+_DAILY_STOCK_CACHE: OrderedDict[str, tuple[float, DailyPriceRead]] = OrderedDict()
+_DAILY_STOCK_CACHE_LOCK = Lock()
+_DAILY_STOCK_CACHE_SIZE = 128
+_DAILY_STOCK_TTL_SECONDS = 300
 
 
 def _market_metadata(ticker, symbol: str) -> dict:
@@ -32,6 +40,54 @@ def _market_metadata(ticker, symbol: str) -> dict:
         metadata = {}
     return {'currency': normalize_currency(metadata.get('currency')) or known_currency(symbol),
             'exchange': metadata.get('exchangeName')}
+
+
+def fetch_daily_stock_bar_yfinance(symbol: str) -> DailyPriceRead:
+    """Read the latest daily session independently of stored intraday quotes."""
+    symbol = str(symbol).strip().upper()
+    if not symbol:
+        raise ValueError("A ticker is required")
+
+    with _DAILY_STOCK_CACHE_LOCK:
+        cached = _DAILY_STOCK_CACHE.get(symbol)
+        if cached and monotonic() - cached[0] < _DAILY_STOCK_TTL_SECONDS:
+            _DAILY_STOCK_CACHE.move_to_end(symbol)
+            return cached[1]
+        _DAILY_STOCK_CACHE.pop(symbol, None)
+
+    ticker = yf.Ticker(_to_yfinance_symbol(symbol))
+    history = ticker.history(period="5d", interval="1d", auto_adjust=False, timeout=8)
+    if history.empty:
+        raise ValueError("No daily price observations")
+    if hasattr(history.columns, "levels"):
+        history = history.copy()
+        history.columns = history.columns.get_level_values(0)
+    latest = history.sort_index().iloc[-1]
+    timestamp = latest.name.to_pydatetime() if hasattr(latest.name, "to_pydatetime") else latest.name
+    # A Vietnamese midnight daily bar has a timestamp on the previous UTC day.
+    # Capture the exchange's session date before normalizing the timestamp.
+    session_date = timestamp.date()
+    if getattr(timestamp, "tzinfo", None) is not None:
+        timestamp = timestamp.astimezone(timezone.utc).replace(tzinfo=None)
+
+    volume = latest.get("Volume")
+    item = DailyPriceRead(
+        symbol=symbol,
+        currency=_market_metadata(ticker, symbol)["currency"],
+        session_date=session_date,
+        timestamp=timestamp,
+        open=Decimal(str(latest.get("Open"))),
+        high=Decimal(str(latest.get("High"))),
+        low=Decimal(str(latest.get("Low"))),
+        close=Decimal(str(latest.get("Close"))),
+        volume=_maybe_decimal(volume) if _is_finite_number(volume) else None,
+    )
+    with _DAILY_STOCK_CACHE_LOCK:
+        _DAILY_STOCK_CACHE[symbol] = (monotonic(), item)
+        _DAILY_STOCK_CACHE.move_to_end(symbol)
+        while len(_DAILY_STOCK_CACHE) > _DAILY_STOCK_CACHE_SIZE:
+            _DAILY_STOCK_CACHE.popitem(last=False)
+    return item
 
 
 def load_crypto_klines(db: Session, symbol: str, interval: str = "1d", limit: int = 500) -> int:

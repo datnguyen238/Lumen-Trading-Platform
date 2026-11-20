@@ -13,6 +13,7 @@ import type {
   OrderRead,
   PositionRead,
   PriceBarRead,
+  DailyPriceRead,
   TradeRead,
   UserRead,
 } from "@/lib/types";
@@ -110,6 +111,7 @@ export const api = {
     request<AccountSummary>(`/accounts/${accountId}/summary`),
 
   // Prices
+  getDailyPrice: (symbol: string) => request<DailyPriceRead>(`/prices/daily?symbol=${encodeURIComponent(symbol)}`),
   getLatestPrice: (symbol: string) =>
     request<PriceBarRead>(`/prices/latest?symbol=${encodeURIComponent(symbol)}`),
   refreshLatestPrice: (symbol: string) =>

@@ -164,6 +164,7 @@ html{font-size:16px;scroll-behavior:smooth}body{margin:0;font-family:var(--font-
 .l-price-details{margin-top:16px;border-top:1px solid var(--border);padding-top:13px}
 .l-price-details summary,.l-order-info summary{font-size:.6875rem;color:var(--muted-foreground);width:fit-content;cursor:pointer;padding-block:4px}
 .l-price-details .l-chart-stats{border-top:0;margin-top:12px;padding-top:0}
+.l-price-details .l-daily-price-period{margin:10px 0 0;font-size:.6875rem;line-height:1.6;color:var(--muted-foreground)}
 .l-order-info{margin-top:12px}
 .l-order-info p{font-size:.6875rem;line-height:1.8;margin-top:8px!important}
 .l-order-ticket .l-review-meta{font-size:.625rem;line-height:1.7}

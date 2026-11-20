@@ -1,5 +1,5 @@
 import os
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import WebSocket, WebSocketDisconnect
 import asyncio
 import contextlib
@@ -22,11 +22,12 @@ from datetime import date
 from app.db.session import get_db
 from app.core.config import settings
 from app.models.models import PriceBar
-from app.schemas.prices import PriceBarRead, LoadStockRequest, LoadCryptoRequest
+from app.schemas.prices import DailyPriceRead, PriceBarRead, LoadStockRequest, LoadCryptoRequest
 from app.data.price_loader import (
     load_stock_history,
     load_crypto_klines,
     fetch_latest_stock_bar_yfinance,
+    fetch_daily_stock_bar_yfinance,
 )
 from app.services.price_refresh import _upsert_bar, refresh_watchlist_db, update_instrument_metadata
 
@@ -130,6 +131,16 @@ def latest(symbol: str, db: Session = Depends(get_db)):
     if not row:
         raise HTTPException(status_code=404, detail="No market price is available for this ticker. Search for another investment or try again later.")
     return _with_change(db, row)
+
+
+@router.get("/daily", response_model=DailyPriceRead)
+def daily(symbol: str = Query(min_length=1, max_length=40)):
+    if not symbol.strip():
+        raise HTTPException(status_code=422, detail="A ticker is required.")
+    try:
+        return fetch_daily_stock_bar_yfinance(symbol)
+    except Exception:
+        raise HTTPException(status_code=503, detail="Daily price details are temporarily unavailable. Please try again.") from None
 
 
 @router.post("/refresh", response_model=PriceBarRead)
