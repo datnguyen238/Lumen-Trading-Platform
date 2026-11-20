@@ -127,7 +127,7 @@ def latest(symbol: str, db: Session = Depends(get_db)):
         .first()
     )
     if not row:
-        raise HTTPException(status_code=404, detail="No data for symbol. Load prices first.")
+        raise HTTPException(status_code=404, detail="No market price is available for this ticker. Search for another investment or try again later.")
     return _with_change(db, row)
 
 
@@ -165,7 +165,7 @@ def refresh(symbol: str, db: Session = Depends(get_db)):
         .first()
     )
     if not row:
-        raise HTTPException(status_code=404, detail="No data for symbol. Load prices first.")
+        raise HTTPException(status_code=404, detail="No market price is available for this ticker. Search for another investment or try again later.")
     return _with_change(db, row)
 
 

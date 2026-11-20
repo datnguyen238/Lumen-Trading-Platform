@@ -173,6 +173,10 @@ html{font-size:16px;scroll-behavior:smooth}body{margin:0;font-family:var(--font-
 .l-empty h2 + .l-button{margin-top:20px}
 
 .l-portfolio-grid.l-no-holdings{grid-template-columns:1fr}
+.l-search-feedback { padding: 14px 18px; color: var(--muted-foreground); font-size: .8125rem; line-height: 1.7; }
+.l-search-feedback .l-text-link { min-height: 36px; text-decoration: underline; text-underline-offset: 3px; }
+.l-research-unavailable .l-actions { justify-content: center; }
+.l-research-unavailable .l-button { white-space: normal; }
 
 /* Authentication has its own canvas, outside the investing workspace. */
 .l-auth-screen {

@@ -16,3 +16,11 @@ class SymbolRead(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class SymbolSearchRead(BaseModel):
+    symbol: str
+    name: Optional[str] = None
+    asset_type: str
+
+    model_config = {"from_attributes": True}

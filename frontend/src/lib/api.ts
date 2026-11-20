@@ -152,6 +152,7 @@ export const api = {
 
     // Symbols + seeding
   getSymbols: () => request<SymbolItem[]>("/symbols"),
+  searchSymbols: (query: string, signal?: AbortSignal) => request<SymbolItem[]>(`/symbols/search?q=${encodeURIComponent(query)}`, { signal }),
   seedDefaultWatchlist: () =>
     request<{ message: string }>("/seed/default-watchlist", { method: "POST" }),
 
